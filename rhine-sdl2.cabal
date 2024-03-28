@@ -1,0 +1,75 @@
+cabal-version:       3.0
+name:                rhine-sdl2
+version:             0.1.0.0
+synopsis:            SDL2 frontend for Rhine
+homepage:            https://github.com/ners/rhine-sdl2/blob/master/README.md
+license:             Apache-2.0
+license-file:        LICENCE.md
+author:              ners
+maintainer:          ners@gmx.ch
+bug-reports:         https://github.com/ners/rhine-sdl2/issues
+category:            FRP
+build-type:          Simple
+extra-source-files:  CHANGELOG.md, README.md
+
+source-repository head
+  type:     git
+  location: https://github.com/ners/rhine-sdl2
+
+common common
+    default-language: GHC2021
+    ghc-options:
+        -Weverything
+        -Wno-unsafe
+        -Wno-missing-safe-haskell-mode
+        -Wno-missing-export-lists
+        -Wno-missing-import-lists
+        -Wno-missing-kind-signatures
+        -Wno-all-missed-specialisations
+    default-extensions:
+        ApplicativeDo
+        Arrows
+        BlockArguments
+        DataKinds
+        DefaultSignatures
+        DeriveAnyClass
+        DeriveGeneric
+        DerivingStrategies
+        DerivingVia
+        ExplicitNamespaces
+        LambdaCase
+        NoFieldSelectors
+        NoImplicitPrelude
+        OverloadedLabels
+        OverloadedRecordDot
+        OverloadedStrings
+        PackageImports
+        RecordWildCards
+        RecursiveDo
+        StrictData
+        TypeFamilies
+        ViewPatterns
+    build-depends:
+        base >= 4.16 && < 5,
+
+library
+    import:           common
+    hs-source-dirs:   src
+    exposed-modules:
+        FRP.Rhine.SDL,
+    build-depends:
+        monad-schedule,
+        rhine >= 1.2 && < 2,
+        sdl2 >= 2.5 && < 3,
+        text,
+        time,
+
+executable example
+    import:           common
+    main-is:          Example.hs
+    ghc-options:      -main-is Example -O2 -threaded
+    build-depends:
+        rhine,
+        rhine-sdl2,
+        sdl2,
+        text,
