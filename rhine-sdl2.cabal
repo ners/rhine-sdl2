@@ -69,7 +69,11 @@ executable example
     main-is:          Example.hs
     ghc-options:      -main-is Example -O2 -threaded
     build-depends:
+        random,
         rhine,
         rhine-sdl2,
         sdl2,
+        sdl2-gfx,
         text,
+        time,
+        vector,
