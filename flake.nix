@@ -39,7 +39,30 @@
           isDirectory
         ];
       };
-      pname = "rhine-sdl2";
+      readDirs = root: attrNames (lib.filterAttrs (_: type: type == "directory") (readDir root));
+      readFiles = root: attrNames (lib.filterAttrs (_: type: type == "regular") (readDir root));
+      basename = path: suffix: with lib; pipe path [
+        (splitString "/")
+        last
+        (removeSuffix suffix)
+      ];
+      cabalProjectPackages = root: with lib; foreach (readDirs root) (dir:
+        let
+          path = "${root}/${dir}";
+          files = readFiles path;
+          cabalFiles = filter (strings.hasSuffix ".cabal") files;
+          pnames = map (path: basename path ".cabal") cabalFiles;
+          pname = if pnames == [ ] then null else head pnames;
+        in
+        optionalAttrs (pname != null) { ${pname} = path; }
+      );
+      cabalProjectPnames = root: lib.attrNames (cabalProjectPackages root);
+      cabalProjectOverlay = root: hfinal: hprev: with lib;
+        mapAttrs
+          (pname: path: hfinal.callCabal2nix pname path { })
+          (cabalProjectPackages root);
+      project = hsSrc ./.;
+      pnames = cabalProjectPnames project;
       ghcs = [ "ghc92" "ghc94" ];
       hpsFor = pkgs:
         lib.filterAttrs (ghc: _: elem ghc ghcs) pkgs.haskell.packages
@@ -47,16 +70,27 @@
       overlay = final: prev: lib.pipe prev [
         (prev: {
           haskell = prev.haskell // {
-            packageOverrides = with prev.haskell.lib.compose; lib.composeManyExtensions [
+            packageOverrides = lib.composeManyExtensions [
               prev.haskell.packageOverrides
-              (hfinal: hprev: {
+              (cabalProjectOverlay project)
+              (cabalProjectOverlay inputs.dunai)
+              (cabalProjectOverlay inputs.rhine)
+              (hfinal: hprev: with prev.haskell.lib.compose; {
                 dunai = hfinal.callCabal2nix "dunai" "${inputs.dunai}/dunai" {
                   transformers = hprev.callCabal2nix "transformers" inputs.dunai-transformers { };
                 };
-                rhine = doJailbreak (hfinal.callCabal2nix "rhine" "${inputs.rhine}/rhine" { });
-                ${pname} = (hfinal.callCabal2nix pname (hsSrc ./.) { }).overrideAttrs (attrs: {
+                rhine-sdl2 = hprev.rhine-sdl2.overrideAttrs (attrs: {
                   meta.mainProgram = "example";
                 });
+                sdl2-image = lib.pipe hprev.sdl2-image [
+                  markUnbroken
+                  (addPkgconfigDepends (with prev; [ SDL2 SDL2_image ]))
+                  (addExtraLibraries (with prev; [ SDL2 SDL2_image ]))
+                  (drv: drv.overrideAttrs (attrs: {
+                    strictDeps = true;
+                    configureFlags = (attrs.configureFlags or [ ]) ++ [ "-v3" ];
+                  }))
+                ];
               })
             ];
           };
@@ -73,11 +107,11 @@
         {
           formatter.${system} = pkgs.nixpkgs-fmt;
           legacyPackages.${system} = pkgs;
-          packages.${system}.default = (hpsFor pkgs).default.${pname};
+          packages.${system}.default = (hpsFor pkgs).default.rhine-mine;
           devShells.${system} =
             foreach (hpsFor pkgs) (ghcName: hp: {
               ${ghcName} = hp.shellFor {
-                packages = ps: [ ps.${pname} ];
+                packages = ps: map (pname: ps.${pname}) pnames;
                 nativeBuildInputs = with hp; [
                   pkgs'.haskellPackages.cabal-install
                   pkgs'.haskellPackages.fourmolu

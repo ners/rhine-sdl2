@@ -20,19 +20,15 @@ data State = State
 
 handleEvent :: (MonadIO m, Tag cl ~ SDL.Event) => ClSF m cl State State
 handleEvent =
-    tagS &&& returnA >>> arrMCl \(e, st) -> do
-        case e.eventPayload of
+    tagS &&& returnA >>> arrMCl \(ev, st) -> do
+        case ev.eventPayload of
             SDL.QuitEvent -> liftIO exitSuccess -- TODO: use ExceptT instead
             SDL.MouseButtonEvent (SDL.MouseButtonEventData{..}) | mouseButtonEventMotion == SDL.Pressed -> do
                 (r, b, g) <- randomIO
                 pure st{colour = SDL.V4 r g b 255}
             SDL.MouseWheelEvent
                 (SDL.MouseWheelEventData{mouseWheelEventPos = SDL.V2 _ direction}) ->
-                    pure
-                        st
-                            { radius =
-                                max 1 $ st.radius + st.radius * fromIntegral direction * 0.1
-                            }
+                    pure st{radius = max 1 $ st.radius * (1 + fromIntegral direction * 0.1)}
             SDL.KeyboardEvent
                 ( SDL.KeyboardEventData
                         { keyboardEventKeyMotion = SDL.Pressed
@@ -50,7 +46,7 @@ handleEvent =
 
 simulate :: (MonadIO m, Time cl ~ UTCTime) => ClSF m cl State State
 simulate =
-    sinceLastS &&& returnA >>^ \(dt, st) -> st{angle = st.angle + st.velocity * dt}
+    sinceLastS &&& returnA >>^ \(δt, st) -> st{angle = st.angle + st.velocity * δt}
 
 renderFrame :: (MonadIO m) => ClSF m cl (State, SDL.Renderer, SDL.Window) ()
 renderFrame = arrMCl \(State{..}, renderer, window) -> do

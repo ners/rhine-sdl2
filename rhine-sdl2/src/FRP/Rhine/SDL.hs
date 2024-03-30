@@ -4,22 +4,12 @@ module FRP.Rhine.SDL where
 
 import Control.Monad.Schedule.Class (MonadSchedule)
 import Data.Time (addUTCTime, getCurrentTime, secondsToNominalDiffTime)
-import Data.Word (Word32)
 import FRP.Rhine hiding (EventClock)
+import GHC.TypeNats (KnownNat)
 import SDL (($=))
 import SDL qualified
 import SDL.Raw qualified
 import Prelude
-import GHC.TypeNats (KnownNat)
-
-instance TimeDifference Word32 where
-    add = (+)
-    difference = (-)
-
-instance TimeDomain SDL.Timestamp where
-    type Diff SDL.Timestamp = Word32
-    addTime = add
-    diffTime = difference
 
 data EventClock = EventClock
 

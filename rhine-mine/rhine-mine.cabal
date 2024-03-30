@@ -1,0 +1,68 @@
+cabal-version:       3.0
+name:                rhine-mine
+version:             0.1.0.0
+synopsis:            Minesweeper powered by Rhine
+homepage:            https://github.com/ners/rhine-sdl2/blob/master/rhine-mine/README.md
+license:             Apache-2.0
+license-file:        LICENCE.md
+author:              ners
+maintainer:          ners@gmx.ch
+bug-reports:         https://github.com/ners/rhine-sdl2/issues
+category:            FRP
+build-type:          Simple
+extra-source-files:  CHANGELOG.md, README.md
+
+source-repository head
+  type:     git
+  location: https://github.com/ners/rhine-sdl2
+
+common common
+    default-language: GHC2021
+    ghc-options:
+        -Weverything
+        -Wno-unsafe
+        -Wno-missing-safe-haskell-mode
+        -Wno-missing-export-lists
+        -Wno-missing-import-lists
+        -Wno-missing-kind-signatures
+        -Wno-all-missed-specialisations
+    default-extensions:
+        ApplicativeDo
+        Arrows
+        BlockArguments
+        DataKinds
+        DefaultSignatures
+        DeriveAnyClass
+        DeriveGeneric
+        DerivingStrategies
+        DerivingVia
+        ExplicitNamespaces
+        LambdaCase
+        NoFieldSelectors
+        NoImplicitPrelude
+        OverloadedLabels
+        OverloadedRecordDot
+        OverloadedStrings
+        PackageImports
+        RecordWildCards
+        RecursiveDo
+        StrictData
+        TypeFamilies
+        ViewPatterns
+    build-depends:
+        base >= 4.16 && < 5,
+
+executable mine
+    import:           common
+    hs-source-dirs:   src
+    main-is:          Main.hs
+    ghc-options:      -O2 -threaded
+    build-depends:
+        containers,
+        hashable,
+        lens,
+        random,
+        rhine,
+        rhine-sdl2,
+        sdl2,
+        sdl2-gfx,
