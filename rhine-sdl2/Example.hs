@@ -3,7 +3,7 @@ module Example where
 import Data.Vector.Storable (Vector)
 import Data.Vector.Storable qualified as Vector
 import FRP.Rhine hiding (EventClock)
-import FRP.Rhine.SDL (flowSDL)
+import FRP.Rhine.SDL (InitConfig (..), RenderT, flowSDL, getRenderer, getWindow)
 import SDL qualified
 import SDL.Primitive qualified as SDL
 import System.Exit (exitSuccess)
@@ -48,8 +48,9 @@ simulate :: (MonadIO m, Time cl ~ UTCTime) => ClSF m cl State State
 simulate =
     sinceLastS &&& returnA >>^ \(δt, st) -> st{angle = st.angle + st.velocity * δt}
 
-renderFrame :: (MonadIO m) => ClSF m cl (State, SDL.Renderer, SDL.Window) ()
-renderFrame = arrMCl \(State{..}, renderer, window) -> do
+renderFrame :: (MonadIO m) => ClSF (RenderT m) cl State ()
+renderFrame = arrMCl \State{..} -> do
+    window <- getWindow
     (w, h) <-
         (\(SDL.V2 w h) -> (fromIntegral w, fromIntegral h))
             <$> SDL.get (SDL.windowSize window)
@@ -63,6 +64,7 @@ renderFrame = arrMCl \(State{..}, renderer, window) -> do
         xs, ys :: (Integral a, Vector.Storable a) => Vector a
         xs = Vector.generate sides $ round . x
         ys = Vector.generate sides $ round . y
+    renderer <- getRenderer
     SDL.fillPolygon renderer xs ys colour
 
 type SimClock = Millisecond 10
@@ -73,13 +75,19 @@ type RenderClock = Millisecond 16
 main :: IO ()
 main =
     flowSDL @IO @SimClock @RenderClock
-        State
-            { sides = 3
-            , radius = 200
-            , angle = 0
-            , velocity = 1
-            , colour = SDL.V4 255 255 255 255
+        InitConfig
+            { windowTitle = "rhine-sdl2 example"
+            , windowConfig = SDL.defaultWindow{SDL.windowResizable = True}
+            , rendererConfig = SDL.defaultRenderer
+            , initialState =
+                State
+                    { sides = 3
+                    , radius = 200
+                    , angle = 0
+                    , velocity = 1
+                    , colour = SDL.V4 255 255 255 255
+                    }
+            , handleEvent
+            , simulate
+            , renderFrame
             }
-        handleEvent
-        simulate
-        renderFrame

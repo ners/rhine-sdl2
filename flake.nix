@@ -84,11 +84,11 @@
                 });
                 sdl2-image = lib.pipe hprev.sdl2-image [
                   markUnbroken
-                  (addPkgconfigDepends (with prev; [ SDL2 SDL2_image ]))
-                  (addExtraLibraries (with prev; [ SDL2 SDL2_image ]))
                   (drv: drv.overrideAttrs (attrs: {
                     strictDeps = true;
-                    configureFlags = (attrs.configureFlags or [ ]) ++ [ "-v3" ];
+                    #configureFlags = (attrs.configureFlags or [ ]) ++ [
+                    #  "--with-gcc" (lib.getExe prev.clangStdenv.cc)
+                    #];
                   }))
                 ];
               })

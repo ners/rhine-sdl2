@@ -66,3 +66,4 @@ executable mine
         rhine-sdl2,
         sdl2,
         sdl2-gfx,
+        sdl2-image,

@@ -61,6 +61,8 @@ library
         monad-schedule,
         rhine >= 1.2 && < 2,
         sdl2 >= 2.5 && < 3,
+        text,
+        transformers,
         time,
 
 executable example

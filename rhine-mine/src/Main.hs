@@ -3,18 +3,18 @@ module Main where
 import Data.Bits (Bits (xor))
 import Data.Foldable (for_)
 import Data.Hashable (Hashable (hash))
+import Data.Map.Strict (Map)
+import Data.Map.Strict qualified as Map
+import Data.Ord (clamp)
 import Data.Set (Set)
 import Debug.Trace (traceShow)
 import FRP.Rhine
-import FRP.Rhine.SDL (flowSDL)
+import FRP.Rhine.SDL (InitConfig (..), RenderT, flowSDL, getRenderer, getWindow)
 import Foreign.C (CInt (CInt))
 import SDL qualified
 import SDL.Primitive qualified as SDL
 import System.Random (Random (random), mkStdGen)
 import Prelude
-import Data.Ord (clamp)
-import Data.Map.Strict qualified as Map
-import Data.Map.Strict (Map)
 
 data Pos = Pos {x :: Integer, y :: Integer} deriving stock (Eq, Ord, Show)
 
@@ -66,9 +66,11 @@ handleEvent
 handleEvent =
     tagS &&& returnA >>^ \(ev, st) -> case ev.eventPayload of
         SDL.QuitEvent -> undefined -- TODO: use ExceptT instead
-        SDL.MouseButtonEvent (SDL.MouseButtonEventData{mouseButtonEventPos = SDL.P (SDL.V2 x y), ..}) | mouseButtonEventMotion == SDL.Pressed ->
-            let tilePos = screenPosToTilePos st (Pos (fromIntegral x) (fromIntegral y))
-             in st{ opened = Map.insert tilePos (tile st tilePos) st.opened }
+        SDL.MouseButtonEvent
+            (SDL.MouseButtonEventData{mouseButtonEventPos = SDL.P (SDL.V2 x y), ..})
+                | mouseButtonEventMotion == SDL.Pressed ->
+                    let tilePos = screenPosToTilePos st (Pos (fromIntegral x) (fromIntegral y))
+                     in st{opened = Map.insert tilePos (tile st tilePos) st.opened}
         SDL.MouseMotionEvent
             (SDL.MouseMotionEventData{mouseMotionEventPos = SDL.P (SDL.V2 x y)}) ->
                 st
@@ -77,15 +79,16 @@ handleEvent =
         SDL.WindowLostMouseFocusEvent{} -> clearCursor st
         SDL.MouseWheelEvent
             (SDL.MouseWheelEventData{mouseWheelEventPos = SDL.V2 _ direction}) ->
-                let tileSize = clamp (20, 100) $ st.tileSize + fromIntegral direction * max 1 (st.tileSize `div` 10)
+                let tileSize =
+                        clamp (20, 100) $
+                            st.tileSize + fromIntegral direction * max 1 (st.tileSize `div` 10)
                     x = tileSize * st.offset.x `div` st.tileSize
                     y = tileSize * st.offset.y `div` st.tileSize
-                 in
-                clearCursor $
-                    st
-                        { tileSize
-                        , offset = Pos x y
-                        }
+                 in clearCursor $
+                        st
+                            { tileSize
+                            , offset = Pos x y
+                            }
         SDL.KeyboardEvent
             ( SDL.KeyboardEventData
                     { keyboardEventKeyMotion = SDL.Pressed
@@ -135,17 +138,18 @@ renderTile renderer state pos =
     opacity = if Just pos == state.cursor then 255 else 200
     colour
         | Just _ <- Map.lookup pos state.opened = SDL.V4 166 227 161
-
         | isBomb state pos = SDL.V4 250 179 135
         | even pos.x `xor` even pos.y = SDL.V4 132 170 245
         | otherwise = SDL.V4 137 180 250
 
-renderFrame :: (MonadIO m) => ClSF m cl (State, SDL.Renderer, SDL.Window) ()
-renderFrame = arrMCl \(state, renderer, window) -> do
+renderFrame :: (MonadIO m) => ClSF (RenderT m) cl State ()
+renderFrame = arrMCl \state -> do
+    window <- getWindow
     (w, h) <-
         (\(SDL.V2 w h) -> (fromIntegral w, fromIntegral h))
             <$> SDL.get (SDL.windowSize window)
     let topLeftTile = screenPosToTilePos state (Pos 0 0)
+    renderer <- getRenderer
     for_ [0 .. 1 + w `div` state.tileSize] $ \dx ->
         for_ [0 .. 1 + h `div` state.tileSize] $ \dy ->
             renderTile renderer state $ offsetPos (+ dx) (+ dy) topLeftTile
@@ -155,15 +159,21 @@ main = do
     let seed = 4 :: Int -- determined by a fair dice roll; guaranteed to be random
     let bombDensity = 0.1 :: Float
     flowSDL @IO @SimClock @RenderClock
-        State
-            { seed
-            , bombDensity
-            , offset = Pos{x = 16, y = 16}
-            , cursor = Nothing
-            , tileSize = 32
-            , flags = mempty
-            , opened = mempty
+        InitConfig
+            { windowTitle = "rhine-sdl2 example"
+            , windowConfig = SDL.defaultWindow{SDL.windowResizable = True}
+            , rendererConfig = SDL.defaultRenderer
+            , initialState =
+                State
+                    { seed
+                    , bombDensity
+                    , offset = Pos{x = 16, y = 16}
+                    , cursor = Nothing
+                    , tileSize = 32
+                    , flags = mempty
+                    , opened = mempty
+                    }
+            , handleEvent
+            , simulate
+            , renderFrame
             }
-        handleEvent
-        simulate
-        renderFrame
