@@ -6,7 +6,6 @@
 
   inputs = {
     nixpkgs.url = "github:nixos/nixpkgs/nixos-unstable";
-    nix-filter.url = "github:numtide/nix-filter";
     rhine = {
       url = "github:turion/rhine/dev_automata";
       flake = false;
@@ -22,15 +21,6 @@
         else if isAttrs xs then mapAttrsToList f xs
         else throw "foreach: expected list or attrset but got ${typeOf xs}"
       );
-      hsSrc = root: inputs.nix-filter {
-        inherit root;
-        include = with inputs.nix-filter.lib; [
-          (matchExt "cabal")
-          (matchExt "hs")
-          (matchExt "md")
-          isDirectory
-        ];
-      };
       readDirs = root: attrNames (lib.filterAttrs (_: type: type == "directory") (readDir root));
       readFiles = root: attrNames (lib.filterAttrs (_: type: type == "regular") (readDir root));
       basename = path: suffix: with lib; pipe path [
@@ -53,8 +43,7 @@
         mapAttrs
           (pname: path: hfinal.callCabal2nix pname path { })
           (cabalProjectPackages root);
-      project = hsSrc ./.;
-      pnames = cabalProjectPnames project;
+      pnames = cabalProjectPnames ./.;
       ghcs = [ "ghc92" "ghc94" ];
       hpsFor = pkgs:
         lib.filterAttrs (ghc: _: elem ghc ghcs) pkgs.haskell.packages
@@ -64,7 +53,7 @@
           haskell = prev.haskell // {
             packageOverrides = lib.composeManyExtensions [
               prev.haskell.packageOverrides
-              (cabalProjectOverlay project)
+              (cabalProjectOverlay ./.)
               (cabalProjectOverlay inputs.rhine)
               (hfinal: hprev: with prev.haskell.lib.compose; {
                 rhine = doJailbreak (dontCheck hprev.rhine);
@@ -75,9 +64,6 @@
                   markUnbroken
                   (drv: drv.overrideAttrs (attrs: {
                     strictDeps = true;
-                    #configureFlags = (attrs.configureFlags or [ ]) ++ [
-                    #  "--with-gcc" (lib.getExe prev.clangStdenv.cc)
-                    #];
                   }))
                 ];
               })
