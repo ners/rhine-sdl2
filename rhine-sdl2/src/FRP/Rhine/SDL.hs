@@ -49,14 +49,15 @@ flowSDL
     -> ClSF m simCl st st
     -> ClSF m renderCl st ()
     -> m ()
-flowSDL initialState handleEvent simulate render = do
+flowSDL initialState handleEvent simulate render =
     flow $
         feedbackRhine
             (keepLast initialState)
             ( feedbackify (handleEvent @@ EventClock) |@| feedbackify (simulate @@ waitClock)
             )
             >-- keepLast initialState
-            --> render @@ waitClock
+            --> render
+                @@ waitClock
 
 feedbackify :: (Monad m) => Rhine m cl a a -> Rhine m cl ((), a) (a, a)
 feedbackify rh = snd ^>>@ rh @>>^ (\st -> (st, st))

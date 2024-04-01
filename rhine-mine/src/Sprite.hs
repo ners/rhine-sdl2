@@ -2,15 +2,25 @@
 
 module Sprite where
 
+import Data.ByteString (ByteString)
 import Data.FileEmbed (embedFileRelative)
+import Data.Vector.Storable (Vector)
+import Data.Vector.Storable qualified as Vector
 import FRP.Rhine
 import Foreign.C (CInt)
 import SDL qualified
 import SDL.Image qualified as SDL
+import SDL.Raw qualified
 import Prelude
 
-getSprite :: (MonadIO m) => m SDL.Surface
-getSprite = SDL.decode $(embedFileRelative "assets/sprite.png")
+spriteContents :: ByteString
+spriteContents = $(embedFileRelative "assets/sprite.png")
+
+spriteSurface :: (MonadIO m) => m SDL.Surface
+spriteSurface = SDL.decode spriteContents
+
+spriteTexture :: (MonadIO m) => SDL.Renderer -> m SDL.Texture
+spriteTexture renderer = SDL.decodeTexture renderer spriteContents
 
 tileSize :: (Integral a) => a
 tileSize = 16
@@ -37,11 +47,63 @@ spriteRect Bomb = tileRect 2 2
 spriteRect Flag = tileRect 2 3
 spriteRect _ = undefined
 
-drawSprite
+surfaceDrawSprite
     :: (MonadIO m)
     => SDL.Surface
     -> Sprite
     -> SDL.Surface
     -> SDL.Rectangle CInt
     -> m ()
-drawSprite src sprite dst dstPos = SDL.surfaceBlitScaled src (Just $ spriteRect sprite) dst (Just dstPos)
+surfaceDrawSprite src sprite dst dstPos = SDL.surfaceBlitScaled src (Just $ spriteRect sprite) dst (Just dstPos)
+
+{-
+0 1
+3 2
+-}
+
+tileCoords :: Int -> Int -> SDL.V4 SDL.Raw.FPoint
+tileCoords y x = SDL.V4 topLeft topRight bottomRight bottomLeft
+  where
+    topLeft = SDL.Raw.FPoint leftX topY
+    topRight = SDL.Raw.FPoint rightX topY
+    bottomRight = SDL.Raw.FPoint rightX bottomY
+    bottomLeft = SDL.Raw.FPoint leftX bottomY
+    spriteCols, spriteRows :: (Num a) => a
+    spriteCols = 4
+    spriteRows = 3
+    leftX = fromIntegral x / spriteCols
+    rightX = fromIntegral (x + 1) / spriteCols
+    topY = fromIntegral y / spriteRows
+    bottomY = fromIntegral (y + 1) / spriteRows
+
+spriteCoords :: Sprite -> SDL.V4 SDL.Raw.FPoint
+spriteCoords (Uncovered i)
+    | i >= 1 && i < 5 = tileCoords 0 (i - 1)
+    | i >= 5 && i < 9 = tileCoords 1 (i - 5)
+    | i == 0 = tileCoords 2 0
+spriteCoords Covered = tileCoords 2 1
+spriteCoords Bomb = tileCoords 2 2
+spriteCoords Flag = tileCoords 2 3
+spriteCoords _ = undefined
+
+textureDrawSprite
+    :: (MonadIO m)
+    => SDL.Renderer
+    -> SDL.Texture
+    -> Sprite
+    -> SDL.V4 SDL.Raw.FPoint
+    -> m ()
+textureDrawSprite renderer texture sprite dstPos = SDL.renderGeometry renderer (Just texture) vertices indices
+  where
+    (SDL.V4 srcTopLeft srcTopRight srcBottomRight srcBottomLeft) = spriteCoords sprite
+    (SDL.V4 dstTopLeft dstTopRight dstBottomRight dstBottomLeft) = dstPos
+    topLeft, topRight, bottomLeft, bottomRight :: SDL.Vertex
+    topLeft = SDL.Vertex dstTopLeft blendColour srcTopLeft
+    topRight = SDL.Vertex dstTopRight blendColour srcTopRight
+    bottomLeft = SDL.Vertex dstBottomLeft blendColour srcBottomLeft
+    bottomRight = SDL.Vertex dstBottomRight blendColour srcBottomRight
+    blendColour = SDL.Raw.Color 255 255 255 255
+    vertices :: Vector SDL.Vertex
+    vertices = Vector.fromList [topLeft, topRight, bottomRight, bottomLeft]
+    indices :: Vector CInt
+    indices = Vector.fromList [2, 1, 0, 2, 0, 3]

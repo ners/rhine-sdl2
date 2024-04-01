@@ -60,13 +60,14 @@ executable mine
         Sprite
     ghc-options:      -O2 -threaded
     build-depends:
+        bytestring,
         containers,
         file-embed,
         hashable,
-        lens,
         random,
         rhine,
         rhine-sdl2,
         sdl2,
         sdl2-gfx,
         sdl2-image,
+        vector,
