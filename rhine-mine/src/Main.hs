@@ -2,7 +2,7 @@ module Main where
 
 import Data.Hashable (Hashable (hash))
 import Data.Ord (clamp)
-import Data.Sequence (Seq, ViewL ((:<)), (|>))
+import Data.Sequence (Seq, ViewL ((:<)), (<|))
 import Data.Sequence qualified as Seq
 import Data.Set (Set)
 import Data.Set qualified as Set
@@ -86,12 +86,12 @@ handleEvent =
                     | mouseButtonEventButton == SDL.ButtonLeft ->
                         let tilePos = screenPosToTilePos st (toPos x y)
                             seed = firstClickSeedReroll st tilePos
-                         in pure st{tileOpenQueue = st.tileOpenQueue |> tilePos, seed}
+                         in pure st{tileOpenQueue = tilePos <| st.tileOpenQueue, seed}
                     | mouseButtonEventButton == SDL.ButtonMiddle ->
                         let tilePos = screenPosToTilePos st (toPos x y)
                             seed = firstClickSeedReroll st tilePos
                             tiles = Seq.fromList $ tilePos : neighbours tilePos
-                         in pure st{tileOpenQueue = st.tileOpenQueue <> tiles, seed}
+                         in pure st{tileOpenQueue = tiles <> st.tileOpenQueue, seed}
                     | mouseButtonEventButton == SDL.ButtonRight ->
                         let tilePos = screenPosToTilePos st (toPos x y)
                             updateSet = if Set.member tilePos st.flags then Set.delete else Set.insert
