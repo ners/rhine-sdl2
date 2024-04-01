@@ -67,11 +67,6 @@ neighbours pos =
 bombNeighbours :: State -> Pos -> Int
 bombNeighbours state = length . filter (isBomb state) . neighbours
 
-type SimClock = Millisecond 10
-
--- 60 FPS => 1000/60 ms/frame
-type RenderClock = Millisecond 16
-
 handleEvent
     :: forall m cl. (MonadIO m, Tag cl ~ SDL.Event) => ClSF m cl State State
 handleEvent =
@@ -189,6 +184,11 @@ renderFrame = arrMCl \state -> do
         , dy <- [0 .. 1 + h `div` state.tileSize]
         ]
     SDL.updateWindowSurface state.window
+
+type SimClock = Millisecond 10
+
+-- 30 FPS => 1000/30 ms/frame
+type RenderClock = Millisecond 33
 
 main :: IO ()
 main = do
