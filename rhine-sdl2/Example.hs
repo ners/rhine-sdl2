@@ -3,7 +3,8 @@ module Example where
 import Data.Vector.Storable (Vector)
 import Data.Vector.Storable qualified as Vector
 import FRP.Rhine hiding (EventClock)
-import FRP.Rhine.SDL (InitConfig (..), RenderT, flowSDL, getRenderer, getWindow)
+import FRP.Rhine.SDL (flowSDL)
+import SDL (($=!))
 import SDL qualified
 import SDL.Primitive qualified as SDL
 import System.Exit (exitSuccess)
@@ -16,6 +17,8 @@ data State = State
     , angle :: Double
     , velocity :: Double
     , colour :: SDL.Color
+    , window :: SDL.Window
+    , renderer :: SDL.Renderer
     }
 
 handleEvent :: (MonadIO m, Tag cl ~ SDL.Event) => ClSF m cl State State
@@ -48,9 +51,10 @@ simulate :: (MonadIO m, Time cl ~ UTCTime) => ClSF m cl State State
 simulate =
     sinceLastS &&& returnA >>^ \(δt, st) -> st{angle = st.angle + st.velocity * δt}
 
-renderFrame :: (MonadIO m) => ClSF (RenderT m) cl State ()
+renderFrame :: (MonadIO m) => ClSF m cl State ()
 renderFrame = arrMCl \State{..} -> do
-    window <- getWindow
+    SDL.rendererDrawColor renderer $=! SDL.V4 0 0 0 255
+    SDL.clear renderer
     (w, h) <-
         (\(SDL.V2 w h) -> (fromIntegral w, fromIntegral h))
             <$> SDL.get (SDL.windowSize window)
@@ -64,8 +68,8 @@ renderFrame = arrMCl \State{..} -> do
         xs, ys :: (Integral a, Vector.Storable a) => Vector a
         xs = Vector.generate sides $ round . x
         ys = Vector.generate sides $ round . y
-    renderer <- getRenderer
     SDL.fillPolygon renderer xs ys colour
+    SDL.present renderer
 
 type SimClock = Millisecond 10
 
@@ -73,21 +77,23 @@ type SimClock = Millisecond 10
 type RenderClock = Millisecond 16
 
 main :: IO ()
-main =
+main = do
+    SDL.initializeAll
+    window <-
+        SDL.createWindow
+            "rhine-sdl2 example"
+            SDL.defaultWindow{SDL.windowResizable = True}
+    renderer <- SDL.createRenderer window (-1) SDL.defaultRenderer
     flowSDL @IO @SimClock @RenderClock
-        InitConfig
-            { windowTitle = "rhine-sdl2 example"
-            , windowConfig = SDL.defaultWindow{SDL.windowResizable = True}
-            , rendererConfig = SDL.defaultRenderer
-            , initialState =
-                State
-                    { sides = 3
-                    , radius = 200
-                    , angle = 0
-                    , velocity = 1
-                    , colour = SDL.V4 255 255 255 255
-                    }
-            , handleEvent
-            , simulate
-            , renderFrame
+        State
+            { sides = 3
+            , radius = 200
+            , angle = 0
+            , velocity = 1
+            , colour = SDL.V4 255 255 255 255
+            , window
+            , renderer
             }
+        handleEvent
+        simulate
+        renderFrame

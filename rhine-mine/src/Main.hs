@@ -1,18 +1,19 @@
 module Main where
 
-import Data.Bits (Bits (xor))
 import Data.Foldable (for_)
 import Data.Hashable (Hashable (hash))
 import Data.Map.Strict (Map)
 import Data.Map.Strict qualified as Map
 import Data.Ord (clamp)
 import Data.Set (Set)
+import Data.Set qualified as Set
 import Debug.Trace (traceShow)
 import FRP.Rhine
-import FRP.Rhine.SDL (InitConfig (..), RenderT, flowSDL, getRenderer, getWindow)
+import FRP.Rhine.SDL (flowSDL)
 import Foreign.C (CInt (CInt))
 import SDL qualified
 import SDL.Primitive qualified as SDL
+import Sprite qualified
 import System.Random (Random (random), mkStdGen)
 import Prelude
 
@@ -23,6 +24,12 @@ offsetPos fx fy Pos{..} = Pos{x = fx x, y = fy y}
 
 sdlPos :: Pos -> SDL.Pos
 sdlPos Pos{..} = SDL.V2 (CInt $ fromIntegral x) (CInt $ fromIntegral y)
+
+fromPos :: (Integral a) => (a -> a -> b) -> Pos -> b
+fromPos f Pos{..} = f (fromIntegral x) (fromIntegral y)
+
+toPos :: (Integral a) => a -> a -> Pos
+toPos x y = Pos (fromIntegral x) (fromIntegral y)
 
 data Tile = Bomb | Normal Int
     deriving stock (Eq, Ord, Show)
@@ -35,6 +42,8 @@ data State = State
     , tileSize :: Integer
     , flags :: Set Pos
     , opened :: Map Pos Tile
+    , sprite :: SDL.Surface
+    , window :: SDL.Window
     }
 
 isBomb :: State -> Pos -> Bool
@@ -67,14 +76,17 @@ handleEvent =
     tagS &&& returnA >>^ \(ev, st) -> case ev.eventPayload of
         SDL.QuitEvent -> undefined -- TODO: use ExceptT instead
         SDL.MouseButtonEvent
-            (SDL.MouseButtonEventData{mouseButtonEventPos = SDL.P (SDL.V2 x y), ..})
-                | mouseButtonEventMotion == SDL.Pressed ->
-                    let tilePos = screenPosToTilePos st (Pos (fromIntegral x) (fromIntegral y))
+            (SDL.MouseButtonEventData{mouseButtonEventPos = SDL.P (SDL.V2 x y), mouseButtonEventMotion = SDL.Released, ..})
+                | mouseButtonEventButton == SDL.ButtonLeft ->
+                    let tilePos = screenPosToTilePos st (toPos x y)
                      in st{opened = Map.insert tilePos (tile st tilePos) st.opened}
+                | mouseButtonEventButton == SDL.ButtonRight ->
+                    let tilePos = screenPosToTilePos st (toPos x y)
+                     in st{flags = Set.insert tilePos st.flags}
         SDL.MouseMotionEvent
             (SDL.MouseMotionEventData{mouseMotionEventPos = SDL.P (SDL.V2 x y)}) ->
                 st
-                    { cursor = Just . screenPosToTilePos st $ Pos (fromIntegral x) (fromIntegral y)
+                    { cursor = Just . screenPosToTilePos st $ toPos x y
                     }
         SDL.WindowLostMouseFocusEvent{} -> clearCursor st
         SDL.MouseWheelEvent
@@ -125,55 +137,56 @@ tilePosToScreenPos State{..} Pos{..} =
         , y = y * tileSize + offset.y
         }
 
-renderTile :: (MonadIO m) => SDL.Renderer -> State -> Pos -> m ()
-renderTile renderer state pos =
-    SDL.fillRectangle
-        renderer
-        (sdlPos topLeft)
-        (sdlPos bottomRight)
-        (colour opacity)
-  where
-    topLeft = tilePosToScreenPos state pos
-    bottomRight = offsetPos (+ (state.tileSize - 1)) (+ (state.tileSize - 1)) topLeft
-    opacity = if Just pos == state.cursor then 255 else 200
-    colour
-        | Just _ <- Map.lookup pos state.opened = SDL.V4 166 227 161
-        | isBomb state pos = SDL.V4 250 179 135
-        | even pos.x `xor` even pos.y = SDL.V4 132 170 245
-        | otherwise = SDL.V4 137 180 250
+renderTile :: (MonadIO m) => SDL.Window -> State -> Pos -> m ()
+renderTile window state pos = do
+    surface <- SDL.getWindowSurface window
+    let sprite
+            | Just t <- Map.lookup pos state.opened = case t of
+                Bomb -> Sprite.Bomb
+                Normal i -> Sprite.Uncovered i
+            | Set.member pos state.flags = Sprite.Flag
+            | otherwise = Sprite.Covered
+    Sprite.drawSprite
+        state.sprite
+        sprite
+        surface
+        ( SDL.Rectangle
+            (SDL.P $ fromPos SDL.V2 $ tilePosToScreenPos state pos)
+            (SDL.V2 (fromIntegral state.tileSize) (fromIntegral state.tileSize))
+        )
 
-renderFrame :: (MonadIO m) => ClSF (RenderT m) cl State ()
+renderFrame :: (MonadIO m) => ClSF m cl State ()
 renderFrame = arrMCl \state -> do
-    window <- getWindow
     (w, h) <-
         (\(SDL.V2 w h) -> (fromIntegral w, fromIntegral h))
-            <$> SDL.get (SDL.windowSize window)
+            <$> SDL.get (SDL.windowSize state.window)
     let topLeftTile = screenPosToTilePos state (Pos 0 0)
-    renderer <- getRenderer
     for_ [0 .. 1 + w `div` state.tileSize] $ \dx ->
         for_ [0 .. 1 + h `div` state.tileSize] $ \dy ->
-            renderTile renderer state $ offsetPos (+ dx) (+ dy) topLeftTile
+            renderTile state.window state $ offsetPos (+ dx) (+ dy) topLeftTile
+    SDL.updateWindowSurface state.window
 
 main :: IO ()
 main = do
+    SDL.initializeAll
+    window <-
+        SDL.createWindow "Rhine Mine" SDL.defaultWindow{SDL.windowResizable = True}
     let seed = 4 :: Int -- determined by a fair dice roll; guaranteed to be random
     let bombDensity = 0.1 :: Float
+    let tileSize = 32 :: Integer
+    sprite <- Sprite.getSprite
     flowSDL @IO @SimClock @RenderClock
-        InitConfig
-            { windowTitle = "rhine-sdl2 example"
-            , windowConfig = SDL.defaultWindow{SDL.windowResizable = True}
-            , rendererConfig = SDL.defaultRenderer
-            , initialState =
-                State
-                    { seed
-                    , bombDensity
-                    , offset = Pos{x = 16, y = 16}
-                    , cursor = Nothing
-                    , tileSize = 32
-                    , flags = mempty
-                    , opened = mempty
-                    }
-            , handleEvent
-            , simulate
-            , renderFrame
+        State
+            { seed
+            , bombDensity
+            , offset = Pos{x = tileSize `div` 2, y = tileSize `div` 2}
+            , cursor = Nothing
+            , tileSize
+            , flags = mempty
+            , opened = mempty
+            , sprite
+            , window
             }
+        handleEvent
+        simulate
+        renderFrame

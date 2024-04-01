@@ -7,16 +7,8 @@
   inputs = {
     nixpkgs.url = "github:nixos/nixpkgs/nixos-unstable";
     nix-filter.url = "github:numtide/nix-filter";
-    dunai = {
-      url = "github:ivanperez-keera/dunai";
-      flake = false;
-    };
-    dunai-transformers = {
-      url = "github:ghc/packages-transformers";
-      flake = false;
-    };
     rhine = {
-      url = "github:turion/rhine";
+      url = "github:turion/rhine/dev_automata";
       flake = false;
     };
   };
@@ -66,19 +58,16 @@
       ghcs = [ "ghc92" "ghc94" ];
       hpsFor = pkgs:
         lib.filterAttrs (ghc: _: elem ghc ghcs) pkgs.haskell.packages
-        // { default = pkgs.haskell.packages.ghc94; };
+        // { default = pkgs.haskellPackages; };
       overlay = final: prev: lib.pipe prev [
         (prev: {
           haskell = prev.haskell // {
             packageOverrides = lib.composeManyExtensions [
               prev.haskell.packageOverrides
               (cabalProjectOverlay project)
-              (cabalProjectOverlay inputs.dunai)
               (cabalProjectOverlay inputs.rhine)
               (hfinal: hprev: with prev.haskell.lib.compose; {
-                dunai = hfinal.callCabal2nix "dunai" "${inputs.dunai}/dunai" {
-                  transformers = hprev.callCabal2nix "transformers" inputs.dunai-transformers { };
-                };
+                rhine = doJailbreak (dontCheck hprev.rhine);
                 rhine-sdl2 = hprev.rhine-sdl2.overrideAttrs (attrs: {
                   meta.mainProgram = "example";
                 });

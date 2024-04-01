@@ -56,9 +56,12 @@ executable mine
     import:           common
     hs-source-dirs:   src
     main-is:          Main.hs
+    other-modules:
+        Sprite
     ghc-options:      -O2 -threaded
     build-depends:
         containers,
+        file-embed,
         hashable,
         lens,
         random,
