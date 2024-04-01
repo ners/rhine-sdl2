@@ -83,6 +83,11 @@ handleEvent =
                     let tilePos = screenPosToTilePos st (toPos x y)
                         seed = firstClickSeedReroll st tilePos
                      in st{tileOpenQueue = st.tileOpenQueue |> tilePos, seed}
+                | mouseButtonEventButton == SDL.ButtonMiddle ->
+                    let tilePos = screenPosToTilePos st (toPos x y)
+                        seed = firstClickSeedReroll st tilePos
+                        tiles = Seq.fromList $ tilePos : neighbours tilePos
+                     in st{tileOpenQueue = st.tileOpenQueue <> tiles, seed}
                 | mouseButtonEventButton == SDL.ButtonRight ->
                     let tilePos = screenPosToTilePos st (toPos x y)
                         updateSet = if Set.member tilePos st.flags then Set.delete else Set.insert
@@ -132,7 +137,9 @@ simulate :: (MonadIO m) => ClSF m cl State State
 simulate = arrMCl \state -> pure
     case Seq.viewl state.tileOpenQueue of
         Seq.EmptyL -> state
-        pos :< remainingQueue | Map.member pos state.opened -> state{tileOpenQueue = remainingQueue}
+        pos :< remainingQueue
+            | Map.member pos state.opened || Set.member pos state.flags ->
+                state{tileOpenQueue = remainingQueue}
         pos :< remainingQueue ->
             let tileToOpen = tile state pos
                 neighboursToOpen =
