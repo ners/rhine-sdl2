@@ -81,7 +81,8 @@ handleEvent =
                 )
                 | mouseButtonEventButton == SDL.ButtonLeft ->
                     let tilePos = screenPosToTilePos st (toPos x y)
-                     in st{tileOpenQueue = st.tileOpenQueue |> tilePos}
+                        seed = firstClickSeedReroll st tilePos
+                     in st{tileOpenQueue = st.tileOpenQueue |> tilePos, seed}
                 | mouseButtonEventButton == SDL.ButtonRight ->
                     let tilePos = screenPosToTilePos st (toPos x y)
                         updateSet = if Set.member tilePos st.flags then Set.delete else Set.insert
@@ -111,16 +112,21 @@ handleEvent =
                         SDL.Keysym{keysymScancode = SDL.Scancode{unwrapScancode = code}}
                     }
                 )
-                | code == 79 -> moveOffset (subtract st.tileSize) id st
-                | code == 80 -> moveOffset (+ st.tileSize) id st
-                | code == 81 -> moveOffset id (subtract st.tileSize) st
-                | code == 82 -> moveOffset id (+ st.tileSize) st
+                | code == 79 -> moveOffset (subtract movementPx) id st
+                | code == 80 -> moveOffset (+ movementPx) id st
+                | code == 81 -> moveOffset id (subtract movementPx) st
+                | code == 82 -> moveOffset id (+ movementPx) st
         _ -> traceShow ev st
   where
     clearCursor :: State -> State
     clearCursor st = st{cursor = Nothing}
     moveOffset :: (Integer -> Integer) -> (Integer -> Integer) -> State -> State
     moveOffset fx fy st = clearCursor $ st{offset = offsetPos fx fy st.offset}
+    movementPx = 10 :: Integer
+    firstClickSeedReroll st pos
+        | Map.null st.opened && tile st pos == Bomb =
+            firstClickSeedReroll st{seed = st.seed + 1} pos
+        | otherwise = st.seed
 
 simulate :: (MonadIO m) => ClSF m cl State State
 simulate = arrMCl \state -> pure
