@@ -1,10 +1,11 @@
 module Main where
 
-import Data.Foldable (for_)
 import Data.Hashable (Hashable (hash))
 import Data.Map.Strict (Map)
 import Data.Map.Strict qualified as Map
 import Data.Ord (clamp)
+import Data.Sequence (Seq, ViewL ((:<)), (|>))
+import Data.Sequence qualified as Seq
 import Data.Set (Set)
 import Data.Set qualified as Set
 import Debug.Trace (traceShow)
@@ -44,6 +45,7 @@ data State = State
     , opened :: Map Pos Tile
     , sprite :: SDL.Surface
     , window :: SDL.Window
+    , tileOpenQueue :: Seq Pos
     }
 
 isBomb :: State -> Pos -> Bool
@@ -76,13 +78,19 @@ handleEvent =
     tagS &&& returnA >>^ \(ev, st) -> case ev.eventPayload of
         SDL.QuitEvent -> undefined -- TODO: use ExceptT instead
         SDL.MouseButtonEvent
-            (SDL.MouseButtonEventData{mouseButtonEventPos = SDL.P (SDL.V2 x y), mouseButtonEventMotion = SDL.Released, ..})
+            ( SDL.MouseButtonEventData
+                    { mouseButtonEventPos = SDL.P (SDL.V2 x y)
+                    , mouseButtonEventMotion = SDL.Released
+                    , ..
+                    }
+                )
                 | mouseButtonEventButton == SDL.ButtonLeft ->
                     let tilePos = screenPosToTilePos st (toPos x y)
-                     in st{opened = Map.insert tilePos (tile st tilePos) st.opened}
+                     in st{tileOpenQueue = st.tileOpenQueue |> tilePos}
                 | mouseButtonEventButton == SDL.ButtonRight ->
                     let tilePos = screenPosToTilePos st (toPos x y)
-                     in st{flags = Set.insert tilePos st.flags}
+                        updateSet = if Set.member tilePos st.flags then Set.delete else Set.insert
+                     in st{flags = updateSet tilePos st.flags}
         SDL.MouseMotionEvent
             (SDL.MouseMotionEventData{mouseMotionEventPos = SDL.P (SDL.V2 x y)}) ->
                 st
@@ -120,7 +128,20 @@ handleEvent =
     moveOffset fx fy st = clearCursor $ st{offset = offsetPos fx fy st.offset}
 
 simulate :: (MonadIO m) => ClSF m cl State State
-simulate = returnA
+simulate = arrMCl \state -> pure
+    case Seq.viewl state.tileOpenQueue of
+        Seq.EmptyL -> state
+        pos :< remainingQueue | Map.member pos state.opened -> state{tileOpenQueue = remainingQueue}
+        pos :< remainingQueue ->
+            let tileToOpen = tile state pos
+                neighboursToOpen =
+                    Seq.fromList
+                        [ npos | tileToOpen == Normal 0, npos <- neighbours pos, not (Map.member npos state.opened)
+                        ]
+             in state
+                    { opened = Map.insert pos tileToOpen state.opened
+                    , tileOpenQueue = remainingQueue <> neighboursToOpen
+                    }
 
 screenPosToTilePos :: State -> Pos -> Pos
 screenPosToTilePos State{..} Pos{..} =
@@ -161,9 +182,12 @@ renderFrame = arrMCl \state -> do
         (\(SDL.V2 w h) -> (fromIntegral w, fromIntegral h))
             <$> SDL.get (SDL.windowSize state.window)
     let topLeftTile = screenPosToTilePos state (Pos 0 0)
-    for_ [0 .. 1 + w `div` state.tileSize] $ \dx ->
-        for_ [0 .. 1 + h `div` state.tileSize] $ \dy ->
-            renderTile state.window state $ offsetPos (+ dx) (+ dy) topLeftTile
+    mapM_
+        (renderTile state.window state)
+        [ offsetPos (+ dx) (+ dy) topLeftTile
+        | dx <- [0 .. 1 + w `div` state.tileSize]
+        , dy <- [0 .. 1 + h `div` state.tileSize]
+        ]
     SDL.updateWindowSurface state.window
 
 main :: IO ()
@@ -172,8 +196,8 @@ main = do
     window <-
         SDL.createWindow "Rhine Mine" SDL.defaultWindow{SDL.windowResizable = True}
     let seed = 4 :: Int -- determined by a fair dice roll; guaranteed to be random
-    let bombDensity = 0.1 :: Float
-    let tileSize = 32 :: Integer
+    let bombDensity = 0.2 :: Float
+    let tileSize = 64 :: Integer
     sprite <- Sprite.getSprite
     flowSDL @IO @SimClock @RenderClock
         State
@@ -184,6 +208,7 @@ main = do
             , tileSize
             , flags = mempty
             , opened = mempty
+            , tileOpenQueue = mempty
             , sprite
             , window
             }
