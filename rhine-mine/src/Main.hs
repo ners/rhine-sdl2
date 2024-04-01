@@ -6,7 +6,7 @@ import Data.Sequence (Seq, ViewL ((:<)), (|>))
 import Data.Sequence qualified as Seq
 import Data.Set (Set)
 import Data.Set qualified as Set
-import Debug.Trace (traceShow)
+import Debug.Trace (traceShowM)
 import FRP.Rhine
 import FRP.Rhine.SDL (flowSDL)
 import Foreign.C (CInt (CInt))
@@ -14,6 +14,7 @@ import SDL qualified
 import SDL.Primitive qualified as SDL
 import SDL.Raw qualified
 import Sprite qualified
+import System.Exit (ExitCode (ExitSuccess), exitWith)
 import System.Random (Random (random), mkStdGen)
 import Prelude
 
@@ -68,60 +69,64 @@ bombNeighbours :: State -> Pos -> Int
 bombNeighbours state = length . filter (isBomb state) . neighbours
 
 handleEvent
-    :: forall m cl. (MonadIO m, Tag cl ~ SDL.Event) => ClSF m cl State State
+    :: forall m cl
+     . (MonadIO m, Tag cl ~ SDL.Event)
+    => ClSFExcept m cl State State ExitCode
 handleEvent =
-    tagS &&& returnA >>^ \(ev, st) -> case ev.eventPayload of
-        SDL.QuitEvent -> undefined -- TODO: use ExceptT instead
-        SDL.MouseButtonEvent
-            ( SDL.MouseButtonEventData
-                    { mouseButtonEventPos = SDL.P (SDL.V2 x y)
-                    , mouseButtonEventMotion = SDL.Released
-                    , ..
-                    }
-                )
-                | mouseButtonEventButton == SDL.ButtonLeft ->
-                    let tilePos = screenPosToTilePos st (toPos x y)
-                        seed = firstClickSeedReroll st tilePos
-                     in st{tileOpenQueue = st.tileOpenQueue |> tilePos, seed}
-                | mouseButtonEventButton == SDL.ButtonMiddle ->
-                    let tilePos = screenPosToTilePos st (toPos x y)
-                        seed = firstClickSeedReroll st tilePos
-                        tiles = Seq.fromList $ tilePos : neighbours tilePos
-                     in st{tileOpenQueue = st.tileOpenQueue <> tiles, seed}
-                | mouseButtonEventButton == SDL.ButtonRight ->
-                    let tilePos = screenPosToTilePos st (toPos x y)
-                        updateSet = if Set.member tilePos st.flags then Set.delete else Set.insert
-                     in st{flags = updateSet tilePos st.flags}
-        SDL.MouseMotionEvent
-            (SDL.MouseMotionEventData{mouseMotionEventPos = SDL.P (SDL.V2 x y)}) ->
-                st
-                    { cursor = Just . screenPosToTilePos st $ toPos x y
-                    }
-        SDL.WindowLostMouseFocusEvent{} -> clearCursor st
-        SDL.MouseWheelEvent
-            (SDL.MouseWheelEventData{mouseWheelEventPos = SDL.V2 _ direction}) ->
-                let tileSize =
-                        clamp (20, 150) $
-                            st.tileSize + fromIntegral direction * max 1 (st.tileSize `div` 10)
-                    x = tileSize * st.offset.x `div` st.tileSize
-                    y = tileSize * st.offset.y `div` st.tileSize
-                 in clearCursor $
+    try $
+        tagS &&& returnA >>> arrMCl \(ev, st) -> case ev.eventPayload of
+            SDL.QuitEvent -> throwE ExitSuccess
+            SDL.MouseButtonEvent
+                ( SDL.MouseButtonEventData
+                        { mouseButtonEventPos = SDL.P (SDL.V2 x y)
+                        , mouseButtonEventMotion = SDL.Released
+                        , ..
+                        }
+                    )
+                    | mouseButtonEventButton == SDL.ButtonLeft ->
+                        let tilePos = screenPosToTilePos st (toPos x y)
+                            seed = firstClickSeedReroll st tilePos
+                         in pure st{tileOpenQueue = st.tileOpenQueue |> tilePos, seed}
+                    | mouseButtonEventButton == SDL.ButtonMiddle ->
+                        let tilePos = screenPosToTilePos st (toPos x y)
+                            seed = firstClickSeedReroll st tilePos
+                            tiles = Seq.fromList $ tilePos : neighbours tilePos
+                         in pure st{tileOpenQueue = st.tileOpenQueue <> tiles, seed}
+                    | mouseButtonEventButton == SDL.ButtonRight ->
+                        let tilePos = screenPosToTilePos st (toPos x y)
+                            updateSet = if Set.member tilePos st.flags then Set.delete else Set.insert
+                         in pure st{flags = updateSet tilePos st.flags}
+            SDL.MouseMotionEvent
+                (SDL.MouseMotionEventData{mouseMotionEventPos = SDL.P (SDL.V2 x y)}) ->
+                    pure
                         st
-                            { tileSize
-                            , offset = Pos x y
+                            { cursor = Just . screenPosToTilePos st $ toPos x y
                             }
-        SDL.KeyboardEvent
-            ( SDL.KeyboardEventData
-                    { keyboardEventKeyMotion = SDL.Pressed
-                    , keyboardEventKeysym =
-                        SDL.Keysym{keysymScancode = SDL.Scancode{unwrapScancode = code}}
-                    }
-                )
-                | code == 79 -> moveOffset (subtract movementPx) id st
-                | code == 80 -> moveOffset (+ movementPx) id st
-                | code == 81 -> moveOffset id (subtract movementPx) st
-                | code == 82 -> moveOffset id (+ movementPx) st
-        _ -> traceShow ev st
+            SDL.WindowLostMouseFocusEvent{} -> pure $ clearCursor st
+            SDL.MouseWheelEvent
+                (SDL.MouseWheelEventData{mouseWheelEventPos = SDL.V2 _ direction}) ->
+                    let tileSize =
+                            clamp (20, 150) $
+                                st.tileSize + fromIntegral direction * max 1 (st.tileSize `div` 10)
+                        x = tileSize * st.offset.x `div` st.tileSize
+                        y = tileSize * st.offset.y `div` st.tileSize
+                     in pure . clearCursor $
+                            st
+                                { tileSize
+                                , offset = Pos x y
+                                }
+            SDL.KeyboardEvent
+                ( SDL.KeyboardEventData
+                        { keyboardEventKeyMotion = SDL.Pressed
+                        , keyboardEventKeysym =
+                            SDL.Keysym{keysymScancode = SDL.Scancode{unwrapScancode = code}}
+                        }
+                    )
+                    | code == 79 -> pure $ moveOffset (subtract movementPx) id st
+                    | code == 80 -> pure $ moveOffset (+ movementPx) id st
+                    | code == 81 -> pure $ moveOffset id (subtract movementPx) st
+                    | code == 82 -> pure $ moveOffset id (+ movementPx) st
+            _ -> traceShowM ev >> pure st
   where
     clearCursor :: State -> State
     clearCursor st = st{cursor = Nothing}
@@ -234,3 +239,4 @@ main = do
         handleEvent
         simulate
         renderFrame
+        >>= exitWith

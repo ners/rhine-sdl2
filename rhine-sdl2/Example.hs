@@ -7,7 +7,7 @@ import FRP.Rhine.SDL (flowSDL)
 import SDL (($=!))
 import SDL qualified
 import SDL.Primitive qualified as SDL
-import System.Exit (exitSuccess)
+import System.Exit (ExitCode (ExitSuccess), exitWith)
 import System.Random (randomIO)
 import Prelude
 
@@ -21,31 +21,33 @@ data State = State
     , renderer :: SDL.Renderer
     }
 
-handleEvent :: (MonadIO m, Tag cl ~ SDL.Event) => ClSF m cl State State
+handleEvent
+    :: (MonadIO m, Tag cl ~ SDL.Event) => ClSFExcept m cl State State ExitCode
 handleEvent =
-    tagS &&& returnA >>> arrMCl \(ev, st) -> do
-        case ev.eventPayload of
-            SDL.QuitEvent -> liftIO exitSuccess -- TODO: use ExceptT instead
-            SDL.MouseButtonEvent (SDL.MouseButtonEventData{..}) | mouseButtonEventMotion == SDL.Pressed -> do
-                (r, b, g) <- randomIO
-                pure st{colour = SDL.V4 r g b 255}
-            SDL.MouseWheelEvent
-                (SDL.MouseWheelEventData{mouseWheelEventPos = SDL.V2 _ direction}) ->
-                    pure st{radius = max 1 $ st.radius * (1 + fromIntegral direction * 0.1)}
-            SDL.KeyboardEvent
-                ( SDL.KeyboardEventData
-                        { keyboardEventKeyMotion = SDL.Pressed
-                        , keyboardEventRepeat
-                        , keyboardEventKeysym =
-                            SDL.Keysym{keysymScancode = SDL.Scancode{unwrapScancode = code}}
-                        }
-                    )
-                    | code == 79 -> pure st{velocity = st.velocity + 0.5}
-                    | code == 80 -> pure st{velocity = st.velocity - 0.5}
-                    | code == 81 && not keyboardEventRepeat ->
-                        pure st{sides = max 3 $ st.sides - 1}
-                    | code == 82 && not keyboardEventRepeat -> pure st{sides = st.sides + 1}
-            _ -> pure st
+    try $
+        tagS &&& returnA >>> arrMCl \(ev, st) -> do
+            case ev.eventPayload of
+                SDL.QuitEvent -> throwE ExitSuccess
+                SDL.MouseButtonEvent (SDL.MouseButtonEventData{..}) | mouseButtonEventMotion == SDL.Pressed -> do
+                    (r, b, g) <- randomIO
+                    pure st{colour = SDL.V4 r g b 255}
+                SDL.MouseWheelEvent
+                    (SDL.MouseWheelEventData{mouseWheelEventPos = SDL.V2 _ direction}) ->
+                        pure st{radius = max 1 $ st.radius * (1 + fromIntegral direction * 0.1)}
+                SDL.KeyboardEvent
+                    ( SDL.KeyboardEventData
+                            { keyboardEventKeyMotion = SDL.Pressed
+                            , keyboardEventRepeat
+                            , keyboardEventKeysym =
+                                SDL.Keysym{keysymScancode = SDL.Scancode{unwrapScancode = code}}
+                            }
+                        )
+                        | code == 79 -> pure st{velocity = st.velocity + 0.5}
+                        | code == 80 -> pure st{velocity = st.velocity - 0.5}
+                        | code == 81 && not keyboardEventRepeat ->
+                            pure st{sides = max 3 $ st.sides - 1}
+                        | code == 82 && not keyboardEventRepeat -> pure st{sides = st.sides + 1}
+                _ -> pure st
 
 simulate :: (MonadIO m, Time cl ~ UTCTime) => ClSF m cl State State
 simulate =
@@ -97,3 +99,4 @@ main = do
         handleEvent
         simulate
         renderFrame
+        >>= exitWith
