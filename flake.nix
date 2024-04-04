@@ -48,8 +48,8 @@
       hpsFor = pkgs:
         lib.filterAttrs (ghc: _: elem ghc ghcs) pkgs.haskell.packages
         // { default = pkgs.haskellPackages; };
-      overlay = final: prev: lib.pipe prev [
-        (prev: {
+      overlay = lib.composeManyExtensions [
+        (final: prev: {
           haskell = prev.haskell // {
             packageOverrides = lib.composeManyExtensions [
               prev.haskell.packageOverrides
@@ -69,6 +69,8 @@
               })
             ];
           };
+        })
+        (final: prev: lib.optionalAttrs (prev.stdenv.hostPlatform.isWindows) {
         })
       ];
     in

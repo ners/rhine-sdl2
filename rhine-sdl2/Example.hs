@@ -11,50 +11,63 @@ import System.Exit (ExitCode (ExitSuccess), exitWith)
 import System.Random (randomIO)
 import Prelude
 
-data State = State
+data AppState = AppState
     { sides :: Int
     , radius :: Double
     , angle :: Double
     , velocity :: Double
     , colour :: SDL.Color
-    , window :: SDL.Window
+    }
+
+data RenderState = RenderState
+    { window :: SDL.Window
     , renderer :: SDL.Renderer
     }
 
 handleEvent
-    :: (MonadIO m, Tag cl ~ SDL.Event) => ClSFExcept m cl State State ExitCode
-handleEvent =
-    try $
-        tagS &&& returnA >>> arrMCl \(ev, st) -> do
-            case ev.eventPayload of
-                SDL.QuitEvent -> throwE ExitSuccess
-                SDL.MouseButtonEvent (SDL.MouseButtonEventData{..}) | mouseButtonEventMotion == SDL.Pressed -> do
-                    (r, b, g) <- randomIO
-                    pure st{colour = SDL.V4 r g b 255}
-                SDL.MouseWheelEvent
-                    (SDL.MouseWheelEventData{mouseWheelEventPos = SDL.V2 _ direction}) ->
-                        pure st{radius = max 1 $ st.radius * (1 + fromIntegral direction * 0.1)}
-                SDL.KeyboardEvent
-                    ( SDL.KeyboardEventData
-                            { keyboardEventKeyMotion = SDL.Pressed
-                            , keyboardEventRepeat
-                            , keyboardEventKeysym =
-                                SDL.Keysym{keysymScancode = SDL.Scancode{unwrapScancode = code}}
-                            }
-                        )
-                        | code == 79 -> pure st{velocity = st.velocity + 0.5}
-                        | code == 80 -> pure st{velocity = st.velocity - 0.5}
-                        | code == 81 && not keyboardEventRepeat ->
-                            pure st{sides = max 3 $ st.sides - 1}
-                        | code == 82 && not keyboardEventRepeat -> pure st{sides = st.sides + 1}
-                _ -> pure st
+    :: (MonadIO m)
+    => SDL.Event
+    -> AppState
+    -> ExceptT ExitCode m AppState
+handleEvent ev st =
+    case ev.eventPayload of
+        SDL.QuitEvent -> throwE ExitSuccess
+        SDL.MouseButtonEvent (SDL.MouseButtonEventData{..}) | mouseButtonEventMotion == SDL.Pressed -> do
+            (r, b, g) <- randomIO
+            pure st{colour = SDL.V4 r g b 255}
+        SDL.MouseWheelEvent
+            (SDL.MouseWheelEventData{mouseWheelEventPos = SDL.V2 _ direction}) ->
+                pure st{radius = max 1 $ st.radius * (1 + fromIntegral direction * 0.1)}
+        SDL.KeyboardEvent
+            ( SDL.KeyboardEventData
+                    { keyboardEventKeyMotion = SDL.Pressed
+                    , keyboardEventRepeat
+                    , keyboardEventKeysym =
+                        SDL.Keysym{keysymScancode = SDL.Scancode{unwrapScancode = code}}
+                    }
+                )
+                | code == 79 -> pure st{velocity = st.velocity + 0.5}
+                | code == 80 -> pure st{velocity = st.velocity - 0.5}
+                | code == 81 && not keyboardEventRepeat ->
+                    pure st{sides = max 3 $ st.sides - 1}
+                | code == 82 && not keyboardEventRepeat -> pure st{sides = st.sides + 1}
+        _ -> pure st
 
-simulate :: (MonadIO m, Time cl ~ UTCTime) => ClSF m cl State State
-simulate =
-    sinceLastS &&& returnA >>^ \(δt, st) -> st{angle = st.angle + st.velocity * δt}
+handleEventS
+    :: (MonadIO m, Tag cl ~ SDL.Event)
+    => ClSFExcept m cl AppState AppState ExitCode
+handleEventS = try $ tagS &&& returnA >>> arrMCl (uncurry handleEvent)
 
-renderFrame :: (MonadIO m) => ClSF m cl State ()
-renderFrame = arrMCl \State{..} -> do
+simulateS
+    :: (MonadIO m, Time cl ~ UTCTime)
+    => ClSF m cl AppState AppState
+simulateS =
+    sinceLastS &&& returnA >>^ \(dt, st) -> st{angle = st.angle + st.velocity * dt}
+
+renderFrameS
+    :: (MonadIO m)
+    => ClSF m cl (AppState, RenderState) RenderState
+renderFrameS = arrMCl \(AppState{..}, r@RenderState{..}) -> do
     SDL.rendererDrawColor renderer $=! SDL.V4 0 0 0 255
     SDL.clear renderer
     (w, h) <-
@@ -72,11 +85,7 @@ renderFrame = arrMCl \State{..} -> do
         ys = Vector.generate sides $ round . y
     SDL.fillPolygon renderer xs ys colour
     SDL.present renderer
-
-type SimClock = Millisecond 10
-
--- 60 FPS => 1000/60 ms/frame
-type RenderClock = Millisecond 16
+    pure r
 
 main :: IO ()
 main = do
@@ -86,17 +95,18 @@ main = do
             "rhine-sdl2 example"
             SDL.defaultWindow{SDL.windowResizable = True}
     renderer <- SDL.createRenderer window (-1) SDL.defaultRenderer
-    flowSDL @IO @SimClock @RenderClock
-        State
+    flowSDL
+        AppState
             { sides = 3
             , radius = 200
             , angle = 0
             , velocity = 1
             , colour = SDL.V4 255 255 255 255
-            , window
-            , renderer
             }
-        handleEvent
-        simulate
-        renderFrame
+        RenderState{..}
+        handleEventS
+        (waitClock @10)
+        simulateS
+        (waitClock @16)
+        renderFrameS
         >>= exitWith

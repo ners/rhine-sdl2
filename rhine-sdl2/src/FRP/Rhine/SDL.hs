@@ -7,7 +7,6 @@ import Control.Monad.Schedule.Class (MonadSchedule)
 import Data.Automaton.MSF.Trans.Except (reactimateExcept, try)
 import Data.Time (addUTCTime, getCurrentTime, secondsToNominalDiffTime)
 import FRP.Rhine hiding (EventClock, try)
-import GHC.TypeNats (KnownNat)
 import SDL qualified
 import SDL.Raw qualified
 import Prelude
@@ -35,30 +34,34 @@ instance (MonadIO m) => Clock m EventClock where
 instance GetClockProxy EventClock
 
 flowSDL
-    :: forall m simCl renderCl sim render st a
-     . ( MonadIO m
+    :: ( MonadIO m
        , MonadSchedule m
        , Clock m simCl
+       , Time simCl ~ UTCTime
+       , GetClockProxy simCl
        , Clock m renderCl
-       , KnownNat sim
-       , simCl ~ Millisecond sim
-       , KnownNat render
-       , renderCl ~ Millisecond render
+       , GetClockProxy renderCl
+       , Time renderCl ~ UTCTime
        )
-    => st
-    -> ClSFExcept m EventClock st st a
-    -> ClSF m simCl st st
-    -> ClSF m renderCl st ()
+    => state
+    -> renderState
+    -> ClSFExcept m EventClock state state a
+    -> simCl
+    -> ClSF m simCl state state
+    -> renderCl
+    -> ClSF m renderCl (state, renderState) renderState
     -> m a
-flowSDL initialState handleEvent simulate render = do
+flowSDL initialState renderState handleEvent simClock simulate renderClock render =
     flowExcept $
         feedbackRhine
             (keepLast initialState)
             ( feedbackify (runClSFExcept handleEvent @@ EventClock)
-                |@| feedbackify (liftClSFAndClock simulate @@ liftClock waitClock)
+                |@| feedbackify (liftClSFAndClock simulate @@ liftClock simClock)
             )
             >-- keepLast initialState
-            --> liftClSFAndClock render @@ liftClock waitClock
+            --> feedbackRhine
+                (keepLast renderState)
+                (liftClSFAndClock (render >>^ ((),)) @@ liftClock renderClock)
 
 feedbackify :: (Monad m) => Rhine m cl a a -> Rhine m cl ((), a) (a, a)
 feedbackify rh = snd ^>>@ rh @>>^ (\st -> (st, st))
