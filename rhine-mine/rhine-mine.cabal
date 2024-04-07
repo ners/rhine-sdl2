@@ -57,13 +57,21 @@ executable mine
     hs-source-dirs:   src
     main-is:          Main.hs
     other-modules:
+        App
+        Event
+        Prelude
+        Render
+        Simulate
         Sprite
     ghc-options:      -O2 -threaded
     build-depends:
         bytestring,
         containers,
         file-embed,
+        generic-lens,
         hashable,
+        lens,
+        mtl,
         random,
         rhine,
         rhine-sdl2,
