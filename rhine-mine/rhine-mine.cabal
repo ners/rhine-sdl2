@@ -61,11 +61,13 @@ executable mine
         Event
         Prelude
         Render
+        Simulation
         Sprite
     ghc-options:      -O2 -threaded
     build-depends:
         bytestring,
         containers,
+        extra,
         file-embed,
         generic-lens,
         hashable,
@@ -78,3 +80,4 @@ executable mine
         sdl2-gfx,
         sdl2-image,
         vector,
+        transformers,

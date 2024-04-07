@@ -2,7 +2,11 @@ module Prelude
     ( module Prelude
     , module Control.Lens.Combinators
     , module Control.Lens.Operators
+    , module Control.Monad
+    , module Control.Monad.Extra
+    , module Control.Monad.Reader
     , module Control.Monad.State.Strict
+    , module Control.Monad.Trans.Class
     , module Data.Ord
     , module Data.Sequence
     , module Data.Set
@@ -13,13 +17,21 @@ module Prelude
     )
 where
 
-import "base" Prelude
 import Control.Lens.Combinators
 import Control.Lens.Operators
-import Control.Monad.State.Strict (StateT, runStateT)
+import Control.Monad
+import Control.Monad.Extra hiding (loop)
+import Control.Monad.Reader (MonadReader, ReaderT (..))
+import Control.Monad.State.Strict
+    ( MonadState
+    , StateT (..)
+    , evalStateT
+    , execStateT
+    , runStateT
+    )
 import Data.Generics.Labels ()
 import Data.Ord (clamp)
-import Data.Sequence (Seq, ViewL(..))
+import Data.Sequence (Seq, ViewL (..))
 import Data.Set (Set)
 import Debug.Trace
 import FRP.Rhine
@@ -27,6 +39,8 @@ import Foreign.C (CInt (CInt))
 import GHC.Generics (Generic)
 import SDL qualified
 import SDL.Primitive qualified as SDL
+import Control.Monad.Trans.Class (MonadTrans, lift)
+import "base" Prelude
 
 data Pos = Pos {x :: Integer, y :: Integer} deriving stock (Eq, Ord, Show)
 

@@ -1,9 +1,11 @@
 module App where
 
-import Prelude
+import Control.Monad.Reader qualified as Reader
+import Control.Monad.State.Strict qualified as State
+import Data.Hashable (Hashable (hash))
 import Data.Set qualified as Set
 import System.Random (Random (random), mkStdGen)
-import Data.Hashable (Hashable (hash))
+import Prelude
 
 data AppState = AppState
     { seed :: Int
@@ -17,47 +19,73 @@ data AppState = AppState
     }
     deriving stock (Generic)
 
-type AppT = StateT AppState
+newtype AppT r m a = App {unApp :: StateT r m a}
+    deriving newtype
+        ( Functor
+        , Applicative
+        , Monad
+        , MonadTrans
+        , MonadState r
+        )
 
-clearCursor :: AppState -> AppState
-clearCursor st = st{cursor = Nothing}
+instance (Monad m) => MonadReader r (AppT r m) where
+    ask = State.get
+    local f a = do
+        oldState <- State.get
+        let newState = f oldState
+        State.put newState
+        a <* State.put oldState
 
-moveOffset
-    :: (Integer -> Integer)
-    -> (Integer -> Integer)
-    -> AppState
-    -> AppState
-moveOffset fx fy st = clearCursor $ st{offset = offsetPos fx fy st.offset}
+type ReadApp m = MonadReader AppState m
 
-firstClickSeedReroll :: AppState -> Pos -> Int
-firstClickSeedReroll st pos
-    | Set.null st.opened && tile st pos == Bomb =
-        firstClickSeedReroll st{seed = st.seed + 1} pos
-    | otherwise = st.seed
+type MutApp m = (ReadApp m, MonadState AppState m)
 
-isBomb :: AppState -> Pos -> Bool
-isBomb AppState{..} Pos{..} = (fst . random . mkStdGen . hash $ (seed, x, y)) < bombDensity
+isOpened :: (ReadApp m) => Pos -> m Bool
+isOpened = views #opened . Set.member
 
-tile :: AppState -> Pos -> Tile
-tile state pos
-    | isBomb state pos = Bomb
-    | otherwise = Normal $ adjacentBombs state pos
+isFlagged :: (ReadApp m) => Pos -> m Bool
+isFlagged = views #flags . Set.member
 
-adjacentBombs :: AppState -> Pos -> Int
-adjacentBombs state = length . filter (isBomb state) . adjacentTiles
+isTouched :: (ReadApp m) => Pos -> m Bool
+isTouched pos = orM [isOpened pos, isFlagged pos]
 
-screenPosToTilePos :: AppState -> Pos -> Pos
-screenPosToTilePos AppState{..} Pos{..} =
-    Pos
-        { x = (x - offset.x) `div` tileSize
-        , y = (y - offset.y) `div` tileSize
-        }
+clearCursor :: (MutApp m) => m ()
+clearCursor = assign #cursor Nothing
+
+firstClickSeedReroll :: (MutApp m) => Pos -> m ()
+firstClickSeedReroll pos = do
+    firstClick <- uses #opened Set.null
+    bomb <- isBomb pos
+    when (firstClick && bomb) do
+        modifying #seed (+ 1)
+        firstClickSeedReroll pos
+
+isBomb :: (ReadApp m) => Pos -> m Bool
+isBomb Pos{..} = do
+    AppState{..} <- Reader.ask
+    pure $ (fst . random . mkStdGen . hash $ (seed, x, y)) < bombDensity
+
+tile :: (ReadApp m) => Pos -> m Tile
+tile pos = ifM (isBomb pos) (pure Bomb) (Normal <$> adjacentBombs pos)
+
+adjacentBombs :: (ReadApp m) => Pos -> m Int
+adjacentBombs pos = length <$> filterM isBomb (adjacentTiles pos)
+
+screenPosToTilePos :: (ReadApp m) => Pos -> m Pos
+screenPosToTilePos Pos{..} = do
+    AppState{..} <- Reader.ask
+    pure $
+        Pos
+            { x = (x - offset.x) `div` tileSize
+            , y = (y - offset.y) `div` tileSize
+            }
 
 -- | This returns the top-left corner of the tile.
-tilePosToScreenPos :: AppState -> Pos -> Pos
-tilePosToScreenPos AppState{..} Pos{..} =
-    Pos
-        { x = x * tileSize + offset.x
-        , y = y * tileSize + offset.y
-        }
-
+tilePosToScreenPos :: (ReadApp m) => Pos -> m Pos
+tilePosToScreenPos Pos{..} = do
+    AppState{..} <- Reader.ask
+    pure $
+        Pos
+            { x = x * tileSize + offset.x
+            , y = y * tileSize + offset.y
+            }

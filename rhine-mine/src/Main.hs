@@ -1,14 +1,15 @@
 module Main where
 
-import FRP.Rhine.SDL (flowSDL)
-import SDL qualified
-import Sprite qualified
-import System.Random (randomIO)
-import Prelude
 import App
 import Event
+import FRP.Rhine.SDL (flowSDL)
 import Render
+import SDL qualified
+import Simulation
+import Sprite qualified
 import System.Exit (exitWith)
+import System.Random (randomIO)
+import Prelude
 
 main :: IO ()
 main = do
@@ -36,7 +37,7 @@ main = do
         RenderState{..}
         handleEventS
         simClock
-        simulate
+        simulateS
         renderClock
         renderFrame
         >>= exitWith

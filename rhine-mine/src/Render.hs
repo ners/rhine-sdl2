@@ -12,9 +12,17 @@ data RenderState = RenderState
     , renderer :: SDL.Renderer
     , sprite :: SDL.Texture
     }
+    deriving stock (Generic)
 
-renderTile :: (MonadIO m) => RenderState -> AppState -> Pos -> m ()
-renderTile RenderState{..} state pos = do
+type RenderT m = StateT RenderState (ReaderT AppState m)
+
+renderTile :: (MonadIO m) => Pos -> RenderT m ()
+renderTile pos = do
+    renderer <- use #renderer
+    sprite <- use #sprite
+
+    spriteType <- isOpened pos
+
     Sprite.textureDrawSprite
         renderer
         sprite
