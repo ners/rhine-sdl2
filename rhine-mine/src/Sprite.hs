@@ -7,7 +7,6 @@ import Data.FileEmbed (embedFileRelative)
 import Data.Vector.Storable (Vector)
 import Data.Vector.Storable qualified as Vector
 import FRP.Rhine
-import Foreign.C (CInt)
 import SDL qualified
 import SDL.Image qualified as SDL
 import SDL.Raw qualified
@@ -38,14 +37,14 @@ data Sprite
     | Flag
 
 spriteRect :: (Integral a) => Sprite -> SDL.Rectangle a
-spriteRect (Uncovered i)
+spriteRect (Sprite.Uncovered i)
     | i >= 1 && i < 5 = tileRect 0 (i - 1)
     | i >= 5 && i < 9 = tileRect 1 (i - 5)
     | i == 0 = tileRect 2 0
-spriteRect Covered = tileRect 2 1
-spriteRect Bomb = tileRect 2 2
-spriteRect Flag = tileRect 2 3
-spriteRect _ = undefined
+    | otherwise = error $ "spriteRect: Uncovered " <> show i <> " is out of bounds"
+spriteRect Sprite.Covered = tileRect 2 1
+spriteRect Sprite.Bomb = tileRect 2 2
+spriteRect Sprite.Flag = tileRect 2 3
 
 surfaceDrawSprite
     :: (MonadIO m)
@@ -81,10 +80,11 @@ spriteCoords (Uncovered i)
     | i >= 1 && i < 5 = tileCoords 0 (i - 1)
     | i >= 5 && i < 9 = tileCoords 1 (i - 5)
     | i == 0 = tileCoords 2 0
-spriteCoords Covered = tileCoords 2 1
-spriteCoords Bomb = tileCoords 2 2
-spriteCoords Flag = tileCoords 2 3
-spriteCoords _ = undefined
+    | otherwise =
+        error $ "spriteCoords: Uncovered " <> show i <> " is out of bounds"
+spriteCoords Sprite.Covered = tileCoords 2 1
+spriteCoords Sprite.Bomb = tileCoords 2 2
+spriteCoords Sprite.Flag = tileCoords 2 3
 
 textureDrawSprite
     :: (MonadIO m)
@@ -93,7 +93,7 @@ textureDrawSprite
     -> Sprite
     -> SDL.V4 SDL.Raw.FPoint
     -> m ()
-textureDrawSprite renderer texture sprite dstPos = SDL.renderGeometry renderer (Just texture) vertices indices
+textureDrawSprite renderer texture sprite dstPos = SDL.renderGeometry renderer (Just texture) vertices ixs
   where
     (SDL.V4 srcTopLeft srcTopRight srcBottomRight srcBottomLeft) = spriteCoords sprite
     (SDL.V4 dstTopLeft dstTopRight dstBottomRight dstBottomLeft) = dstPos
@@ -105,5 +105,5 @@ textureDrawSprite renderer texture sprite dstPos = SDL.renderGeometry renderer (
     blendColour = SDL.Raw.Color 255 255 255 255
     vertices :: Vector SDL.Vertex
     vertices = Vector.fromList [topLeft, topRight, bottomRight, bottomLeft]
-    indices :: Vector CInt
-    indices = Vector.fromList [2, 1, 0, 2, 0, 3]
+    ixs :: Vector CInt
+    ixs = Vector.fromList [2, 1, 0, 2, 0, 3]
