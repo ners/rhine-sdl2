@@ -4,6 +4,7 @@ import Control.Monad.Reader qualified as Reader
 import Control.Monad.State.Strict qualified as State
 import Data.Hashable (Hashable (hash))
 import Data.Set qualified as Set
+import SDL qualified
 import System.Random (Random (random), mkStdGen)
 import Prelude
 
@@ -19,16 +20,26 @@ data AppState = AppState
     }
     deriving stock (Generic)
 
-newtype AppT r m a = App {unApp :: StateT r m a}
+newtype AppT m a = App {unApp :: StateT AppState m a}
     deriving newtype
         ( Functor
         , Applicative
         , Monad
+        , MonadIO
         , MonadTrans
-        , MonadState r
+        , MonadState AppState
         )
 
-instance (Monad m) => MonadReader r (AppT r m) where
+runAppT :: AppT m a -> AppState -> m (a, AppState)
+runAppT App{..} = runStateT unApp
+
+evalAppT :: (Monad m) => AppT m a -> AppState -> m a
+evalAppT App{..} = evalStateT unApp
+
+execAppT :: (Monad m) => AppT m a -> AppState -> m AppState
+execAppT App{..} = execStateT unApp
+
+instance (Monad m) => MonadReader AppState (AppT m) where
     ask = State.get
     local f a = do
         oldState <- State.get
@@ -71,8 +82,8 @@ tile pos = ifM (isBomb pos) (pure Bomb) (Normal <$> adjacentBombs pos)
 adjacentBombs :: (ReadApp m) => Pos -> m Int
 adjacentBombs pos = length <$> filterM isBomb (adjacentTiles pos)
 
-screenPosToTilePos :: (ReadApp m) => Pos -> m Pos
-screenPosToTilePos Pos{..} = do
+screenPosToTilePos :: (ReadApp m, Integral a) => SDL.V2 a -> m Pos
+screenPosToTilePos (view fromSdlPos -> Pos{..}) = do
     AppState{..} <- Reader.ask
     pure $
         Pos

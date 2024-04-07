@@ -39,5 +39,5 @@ main = do
         simClock
         simulateS
         renderClock
-        renderFrame
+        renderFrameS
         >>= exitWith

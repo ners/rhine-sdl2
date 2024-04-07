@@ -29,6 +29,7 @@ import Control.Monad.State.Strict
     , execStateT
     , runStateT
     )
+import Control.Monad.Trans.Class (MonadTrans, lift)
 import Data.Generics.Labels ()
 import Data.Ord (clamp)
 import Data.Sequence (Seq, ViewL (..))
@@ -38,14 +39,35 @@ import FRP.Rhine
 import Foreign.C (CInt (CInt))
 import GHC.Generics (Generic)
 import SDL qualified
-import SDL.Primitive qualified as SDL
-import Control.Monad.Trans.Class (MonadTrans, lift)
+import SDL.Raw qualified
 import "base" Prelude
 
-data Pos = Pos {x :: Integer, y :: Integer} deriving stock (Eq, Ord, Show)
+data Pos = Pos {x :: Integer, y :: Integer}
+    deriving stock (Generic, Eq, Ord, Show)
 
-offsetPos :: (Integer -> Integer) -> (Integer -> Integer) -> Pos -> Pos
-offsetPos fx fy Pos{..} = Pos{x = fx x, y = fy y}
+toSdlPos :: forall a. (Integral a) => Lens' Pos (SDL.V2 a)
+toSdlPos = lens getter setter
+  where
+    getter :: Pos -> SDL.V2 a
+    getter Pos{..} = SDL.V2 (fromIntegral x) (fromIntegral y)
+    setter :: Pos -> SDL.V2 a -> Pos
+    setter _ = view fromSdlPos
+
+fromSdlPos :: forall a. (Integral a) => Lens' (SDL.V2 a) Pos
+fromSdlPos = lens getter setter
+  where
+    getter :: SDL.V2 a -> Pos
+    getter (SDL.V2 (fromIntegral -> x) (fromIntegral -> y)) = Pos{..}
+    setter :: SDL.V2 a -> Pos -> SDL.V2 a
+    setter _ = view toSdlPos
+
+fpoint :: Lens' Pos SDL.Raw.FPoint
+fpoint = lens getter setter
+  where
+    getter :: Pos -> SDL.Raw.FPoint
+    getter Pos{..} = SDL.Raw.FPoint{fPointX = fromIntegral x, fPointY = fromIntegral y}
+    setter :: Pos -> SDL.Raw.FPoint -> Pos
+    setter _ SDL.Raw.FPoint{..} = Pos{x = round fPointX, y = round fPointY}
 
 adjacentTiles :: Pos -> [Pos]
 adjacentTiles pos =
@@ -54,15 +76,6 @@ adjacentTiles pos =
     , y <- [pos.y - 1 .. pos.y + 1]
     , Pos{x, y} /= pos
     ]
-
-sdlPos :: Pos -> SDL.Pos
-sdlPos Pos{..} = SDL.V2 (CInt $ fromIntegral x) (CInt $ fromIntegral y)
-
-fromPos :: (Num a) => (a -> a -> b) -> Pos -> b
-fromPos f Pos{..} = f (fromIntegral x) (fromIntegral y)
-
-toPos :: (Integral a) => a -> a -> Pos
-toPos x y = Pos (fromIntegral x) (fromIntegral y)
 
 data Tile = Bomb | Normal Int
     deriving stock (Eq, Ord, Show)

@@ -1,6 +1,3 @@
-{-# OPTIONS_GHC -Wno-orphans #-}
-{-# LANGUAGE OverlappingInstances #-}
-
 module Simulation where
 
 import App
@@ -9,7 +6,7 @@ import Data.Set qualified as Set
 import Prelude
 
 simulateS :: (Monad m) => ClSF m cl AppState AppState
-simulateS = arrMCl $ execStateT $ (.unApp) simulate
+simulateS = arrMCl $ execAppT simulate
 
 simulate :: (MutApp m) => m ()
 simulate =
