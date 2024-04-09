@@ -23,11 +23,10 @@ clearCursor :: AppState -> AppState
 clearCursor st = st{cursor = Nothing}
 
 moveOffset
-    :: (Integer -> Integer)
-    -> (Integer -> Integer)
+    :: (Pos -> Pos)
     -> AppState
     -> AppState
-moveOffset fx fy st = clearCursor $ st{offset = offsetPos fx fy st.offset}
+moveOffset offsetPos st = clearCursor $ st{offset = offsetPos st.offset}
 
 firstClickSeedReroll :: AppState -> Pos -> Int
 firstClickSeedReroll st pos
