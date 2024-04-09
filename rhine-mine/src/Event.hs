@@ -5,17 +5,21 @@ import Data.Sequence qualified as Seq
 import Data.Set qualified as Set
 import SDL qualified
 import System.Exit (ExitCode (ExitSuccess))
-import Prelude
+import Prelude hiding (EventClock)
 
-handleEvent
-    :: forall m
-     . (MonadIO m)
-    => SDL.Event
-    -> AppState
-    -> ExceptT ExitCode m AppState
-handleEvent ev st =
-    case ev.eventPayload of
-        SDL.QuitEvent -> throwE ExitSuccess
+data Event
+    = Exit
+    | TileOpen Pos
+    | TileMultiOpen Pos
+    | ToggleFlag Pos
+    | ChangeOffset (Pos -> Pos)
+    | Zoom Pos (Integer -> Integer)
+    | Hover (Maybe Pos)
+
+fromSdlEvent :: AppState -> SDL.Event -> Maybe Event
+fromSdlEvent st event =
+    case event.eventPayload of
+        SDL.QuitEvent -> Just Exit
         SDL.MouseButtonEvent
             ( SDL.MouseButtonEventData
                     { mouseButtonEventPos = SDL.P (SDL.V2 x y)
@@ -25,36 +29,24 @@ handleEvent ev st =
                 )
                 | mouseButtonEventButton == SDL.ButtonLeft ->
                     let tilePos = screenPosToTilePos st (toPos x y)
-                        seed = firstClickSeedReroll st tilePos
-                     in pure st{tileOpenQueue = tilePos <| st.tileOpenQueue, seed}
+                     in Just $ TileOpen tilePos
                 | mouseButtonEventButton == SDL.ButtonMiddle ->
                     let tilePos = screenPosToTilePos st (toPos x y)
-                        seed = firstClickSeedReroll st tilePos
-                        tiles = Seq.fromList $ tilePos : adjacentTiles tilePos
-                     in pure st{tileOpenQueue = tiles <> st.tileOpenQueue, seed}
+                     in Just $ TileMultiOpen tilePos
                 | mouseButtonEventButton == SDL.ButtonRight ->
                     let tilePos = screenPosToTilePos st (toPos x y)
-                        updateSet = if Set.member tilePos st.flags then Set.delete else Set.insert
-                     in pure st{flags = updateSet tilePos st.flags}
+                     in Just $ ToggleFlag tilePos
         SDL.MouseMotionEvent
             (SDL.MouseMotionEventData{mouseMotionEventPos = SDL.P (SDL.V2 x y)}) ->
-                pure
-                    st
-                        { cursor = Just . screenPosToTilePos st $ toPos x y
-                        }
-        SDL.WindowLostMouseFocusEvent{} -> pure $ clearCursor st
+                let tilePos = screenPosToTilePos st $ toPos x y
+                 in Just $ Hover $ Just tilePos
+        SDL.WindowLostMouseFocusEvent{} -> Just $ Hover Nothing
         SDL.MouseWheelEvent
             (SDL.MouseWheelEventData{mouseWheelEventPos = SDL.V2 _ direction}) ->
-                let tileSize =
-                        clamp (20, 150) $
-                            st.tileSize + fromIntegral direction * max 1 (st.tileSize `div` 10)
-                    x = tileSize * st.offset.x `div` st.tileSize
-                    y = tileSize * st.offset.y `div` st.tileSize
-                 in pure . clearCursor $
-                        st
-                            { tileSize
-                            , offset = Pos x y
-                            }
+                case st.cursor of
+                    Nothing -> Nothing
+                    Just hover ->
+                        Just $ Zoom hover (+ fromIntegral direction)
         SDL.KeyboardEvent
             ( SDL.KeyboardEventData
                     { keyboardEventKeyMotion = SDL.Pressed
@@ -62,13 +54,50 @@ handleEvent ev st =
                         SDL.Keysym{keysymScancode = SDL.Scancode{unwrapScancode = code}}
                     }
                 )
-                | code == 79 -> pure $ moveOffset (subtract movementPx) id st
-                | code == 80 -> pure $ moveOffset (+ movementPx) id st
-                | code == 81 -> pure $ moveOffset id (subtract movementPx) st
-                | code == 82 -> pure $ moveOffset id (+ movementPx) st
-        _ -> traceShowM ev >> pure st
-  where
-    movementPx = 10 :: Integer
+                | code == 79 -> changeOffset (subtract movementPx) id
+                | code == 80 -> changeOffset (+ movementPx) id
+                | code == 81 -> changeOffset id (subtract movementPx)
+                | code == 82 -> changeOffset id (+ movementPx)
+              where
+                movementPx = 10 :: Integer
+                changeOffset updateX updateY =
+                    Just $ ChangeOffset $ \p -> Pos{x = updateX p.x, y = updateY p.y}
+        _ -> Nothing
+
+handleEvent
+    :: forall m
+     . (MonadIO m)
+    => SDL.Event
+    -> AppState
+    -> ExceptT ExitCode m AppState
+handleEvent ev st = case fromSdlEvent st ev of
+    Nothing -> pure st
+    Just Exit -> throwE ExitSuccess
+    Just (TileOpen tilePos) ->
+        let seed = firstClickSeedReroll st tilePos
+         in pure st{tileOpenQueue = tilePos <| st.tileOpenQueue, seed}
+    Just (TileMultiOpen tilePos) ->
+        let seed = firstClickSeedReroll st tilePos
+            tiles = Seq.fromList $ tilePos : adjacentTiles tilePos
+         in pure st{tileOpenQueue = tiles <> st.tileOpenQueue, seed}
+    Just (ToggleFlag tilePos) ->
+        let updateSet = if Set.member tilePos st.flags then Set.delete else Set.insert
+         in pure st{flags = updateSet tilePos st.flags}
+    Just (Hover maybePos) ->
+        pure st{cursor = maybePos}
+    Just (Zoom _tilePos updateDirection) ->
+        let tileSize =
+                clamp (20, 150) $
+                    updateDirection st.tileSize * max 1 (st.tileSize `div` 10)
+            x = tileSize * st.offset.x `div` st.tileSize
+            y = tileSize * st.offset.y `div` st.tileSize
+         in pure . clearCursor $
+                st
+                    { tileSize
+                    , offset = Pos x y
+                    }
+    Just (ChangeOffset updatePos) ->
+        pure $ moveOffset updatePos st
 
 handleEventS
     :: (MonadIO m, Tag cl ~ SDL.Event)
