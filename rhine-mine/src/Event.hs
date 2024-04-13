@@ -1,6 +1,7 @@
 module Event where
 
 import App
+import Data.Int (Int32)
 import Data.Sequence qualified as Seq
 import Data.Set qualified as Set
 import SDL qualified
@@ -13,7 +14,7 @@ data Event
     | TileMultiOpen Pos
     | ToggleFlag Pos
     | ChangeOffset (Pos -> Pos)
-    | Zoom Pos (Integer -> Integer)
+    | Zoom Int32 Pos
     | Hover (Maybe Pos)
 
 fromSdlEvent :: AppState -> SDL.Event -> Maybe Event
@@ -28,25 +29,18 @@ fromSdlEvent st event =
                     }
                 )
                 | mouseButtonEventButton == SDL.ButtonLeft ->
-                    let tilePos = screenPosToTilePos st (toPos x y)
-                     in Just $ TileOpen tilePos
+                    Just . TileOpen . screenPosToTilePos st $ toPos x y
                 | mouseButtonEventButton == SDL.ButtonMiddle ->
-                    let tilePos = screenPosToTilePos st (toPos x y)
-                     in Just $ TileMultiOpen tilePos
+                    Just . TileMultiOpen . screenPosToTilePos st $ toPos x y
                 | mouseButtonEventButton == SDL.ButtonRight ->
-                    let tilePos = screenPosToTilePos st (toPos x y)
-                     in Just $ ToggleFlag tilePos
+                    Just . ToggleFlag . screenPosToTilePos st $ toPos x y
         SDL.MouseMotionEvent
             (SDL.MouseMotionEventData{mouseMotionEventPos = SDL.P (SDL.V2 x y)}) ->
-                let tilePos = screenPosToTilePos st $ toPos x y
-                 in Just $ Hover $ Just tilePos
+                Just . Hover . Just . screenPosToTilePos st $ toPos x y
         SDL.WindowLostMouseFocusEvent{} -> Just $ Hover Nothing
         SDL.MouseWheelEvent
             (SDL.MouseWheelEventData{mouseWheelEventPos = SDL.V2 _ direction}) ->
-                case st.cursor of
-                    Nothing -> Nothing
-                    Just hover ->
-                        Just $ Zoom hover (+ fromIntegral direction)
+                Zoom direction <$> st.cursor
         SDL.KeyboardEvent
             ( SDL.KeyboardEventData
                     { keyboardEventKeyMotion = SDL.Pressed
@@ -85,13 +79,13 @@ handleEvent ev st = case fromSdlEvent st ev of
          in pure st{flags = updateSet tilePos st.flags}
     Just (Hover maybePos) ->
         pure st{cursor = maybePos}
-    Just (Zoom _tilePos updateDirection) ->
+    Just (Zoom direction _pos) ->
         let tileSize =
                 clamp (20, 150) $
-                    updateDirection st.tileSize * max 1 (st.tileSize `div` 10)
+                    st.tileSize + fromIntegral direction * max 1 (st.tileSize `div` 10)
             x = tileSize * st.offset.x `div` st.tileSize
             y = tileSize * st.offset.y `div` st.tileSize
-         in pure . clearCursor $
+         in pure
                 st
                     { tileSize
                     , offset = Pos x y

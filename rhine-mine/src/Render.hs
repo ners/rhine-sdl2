@@ -2,6 +2,7 @@ module Render where
 
 import App
 import Data.Set qualified as Set
+import SDL (windowSize)
 import SDL qualified
 import SDL.Raw qualified
 import Sprite qualified
@@ -15,11 +16,16 @@ data RenderState = RenderState
 
 renderTile :: (MonadIO m) => RenderState -> AppState -> Pos -> m ()
 renderTile RenderState{..} state pos = do
-    Sprite.textureDrawSprite
+    Sprite.drawRectSprite
         renderer
         sprite
         spriteType
-        (SDL.V4 topLeft topRight bottomRight bottomLeft)
+        ( SDL.Raw.FRect
+            (fromIntegral x)
+            (fromIntegral y)
+            (fromIntegral state.tileSize)
+            (fromIntegral state.tileSize)
+        )
   where
     spriteType
         | Set.member pos state.opened = case tile state pos of
@@ -27,13 +33,7 @@ renderTile RenderState{..} state pos = do
             Normal i -> Sprite.Uncovered i
         | Set.member pos state.flags = Sprite.Flag
         | otherwise = Sprite.Covered
-    screenPos = tilePosToScreenPos state pos
-    topLeft = fromPos SDL.Raw.FPoint screenPos
-    topRight = fromPos SDL.Raw.FPoint $ offsetPos (+ state.tileSize) id screenPos
-    bottomRight =
-        fromPos SDL.Raw.FPoint $
-            offsetPos (+ state.tileSize) (+ state.tileSize) screenPos
-    bottomLeft = fromPos SDL.Raw.FPoint $ offsetPos id (+ state.tileSize) screenPos
+    Pos x y = tilePosToScreenPos state pos
 
 renderFrameS :: (MonadIO m) => ClSF m cl (AppState, RenderState) RenderState
 renderFrameS = arrMCl $ uncurry renderFrame
