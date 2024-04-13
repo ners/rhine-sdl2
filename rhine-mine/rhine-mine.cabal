@@ -71,6 +71,7 @@ executable mine
         generic-lens,
         hashable,
         lens,
+        lrucaching,
         mtl,
         random,
         rhine,

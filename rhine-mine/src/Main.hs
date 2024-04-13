@@ -1,6 +1,7 @@
 module Main where
 
 import App
+import Data.LruCache qualified as LruCache
 import Event
 import FRP.Rhine.SDL (flowSDL)
 import Render
@@ -21,6 +22,7 @@ main = do
     let bombDensity = 0.2 :: Float
     let tileSize = 64 :: Integer
     sprite <- Sprite.spriteTexture renderer
+    let textureCache = LruCache.empty @Pos @SDL.Texture 1000
     let simClock = waitClock @10
     let renderClock = waitClock @16
     flowSDL

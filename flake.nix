@@ -56,6 +56,7 @@
               (cabalProjectOverlay ./.)
               (cabalProjectOverlay inputs.rhine)
               (hfinal: hprev: with prev.haskell.lib.compose; {
+                lrucaching = markUnbroken hprev.lrucaching;
                 rhine = doJailbreak (dontCheck hprev.rhine);
                 rhine-sdl2 = hprev.rhine-sdl2.overrideAttrs (attrs: {
                   meta.mainProgram = "example";

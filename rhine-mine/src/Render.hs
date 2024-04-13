@@ -6,11 +6,13 @@ import SDL qualified
 import SDL.Raw qualified
 import Sprite qualified
 import Prelude
+import Data.LruCache (LruCache)
 
 data RenderState = RenderState
     { window :: SDL.Window
     , renderer :: SDL.Renderer
     , sprite :: SDL.Texture
+    , textureCache :: LruCache Pos SDL.Texture
     }
 
 renderTile :: (MonadIO m) => RenderState -> AppState -> Pos -> m ()
