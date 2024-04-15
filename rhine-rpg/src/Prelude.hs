@@ -50,5 +50,5 @@ fromPos f Pos{..} = f (fromIntegral x) (fromIntegral y)
 toPos :: (Integral a) => a -> a -> Pos
 toPos x y = Pos (fromIntegral x) (fromIntegral y)
 
-data Tile = Wall | Air
+data Tile = Wall | Door | Air
     deriving stock (Eq, Ord, Show)

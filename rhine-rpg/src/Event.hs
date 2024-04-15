@@ -26,7 +26,7 @@ fromSdlEvent st event =
                     Nothing -> Nothing
                     Just hover ->
                         Just $ Zoom hover (+ fromIntegral direction)
-        --SDL.KeyboardEvent
+        -- SDL.KeyboardEvent
         --    ( SDL.KeyboardEventData
         --            { keyboardEventKeyMotion = SDL.Pressed
         --            , keyboardEventKeysym =

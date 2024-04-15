@@ -3,6 +3,7 @@ module Main where
 import App
 import Event
 import FRP.Rhine.SDL (flowSDL)
+import ModelSynthesis qualified
 import Render
 import SDL qualified
 import Simulate (simulateS)
@@ -21,12 +22,14 @@ main = do
     let simClock = waitClock @10
     let renderClock = waitClock @16
     let tileSize :: Integer = 10
+    let gameMap = ModelSynthesis.generate (100, 100)
     flowSDL
         AppState
             { seed
-            , tileSize = tileSize
+            , tileSize
             , offset = Pos{x = tileSize `div` 2, y = tileSize `div` 2}
             , cursor = Nothing
+            , gameMap
             }
         RenderState{..}
         handleEventS

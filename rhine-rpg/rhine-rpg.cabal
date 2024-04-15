@@ -62,6 +62,8 @@ executable mine
         Prelude
         Render
         Simulate
+        GenerateModel
+        ModelSynthesis
     ghc-options:      -O2 -threaded
     build-depends:
         bytestring,

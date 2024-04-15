@@ -7,6 +7,7 @@ data AppState = AppState
     , tileSize :: Integer
     , offset :: Pos
     , cursor :: Maybe Pos
+    , gameMap :: [[Tile]]
     }
     deriving stock (Generic)
 
@@ -18,11 +19,6 @@ moveOffset
     -> AppState
     -> AppState
 moveOffset moveBy st = clearCursor $ st{offset = moveBy st.offset}
-
-tile :: AppState -> Pos -> Tile
-tile _state Pos{..} =
-    if y == 5 then Wall
-    else Air
 
 screenPosToTilePos :: AppState -> Pos -> Pos
 screenPosToTilePos AppState{..} Pos{..} =
