@@ -3,7 +3,7 @@ module Example where
 import Data.Vector.Storable (Vector)
 import Data.Vector.Storable qualified as Vector
 import FRP.Rhine hiding (EventClock)
-import FRP.Rhine.SDL (flowSDL)
+import FRP.Rhine.SDL (EventClock (EventClock), flowSDL)
 import SDL (($=!))
 import SDL qualified
 import SDL.Primitive qualified as SDL
@@ -55,8 +55,8 @@ handleEvent ev st =
 
 handleEventS
     :: (MonadIO m, Tag cl ~ SDL.Event)
-    => ClSFExcept m cl AppState AppState ExitCode
-handleEventS = try $ tagS &&& returnA >>> arrMCl (uncurry handleEvent)
+    => ClSF (ExceptT ExitCode m) cl AppState AppState
+handleEventS = tagS &&& returnA >>> arrMCl (uncurry handleEvent)
 
 simulateS
     :: (MonadIO m, Time cl ~ UTCTime)
@@ -104,9 +104,7 @@ main = do
             , colour = SDL.V4 255 255 255 255
             }
         RenderState{..}
-        handleEventS
-        (waitClock @10)
-        simulateS
-        (waitClock @16)
-        renderFrameS
+        (handleEventS @@ EventClock)
+        (simulateS @@ waitClock @10)
+        (renderFrameS @@ waitClock @16)
         >>= exitWith

@@ -36,32 +36,43 @@ instance GetClockProxy EventClock
 flowSDL
     :: ( MonadIO m
        , MonadSchedule m
-       , Clock m simCl
-       , Time simCl ~ UTCTime
+       , Time eventCl ~ time
+       , Time (In eventCl) ~ time
+       , Time (Out eventCl) ~ time
+       , Time simCl ~ time
+       , Time (In simCl) ~ time
+       , Time (Out simCl) ~ time
+       , Time renderCl ~ time
+       , Time (In renderCl) ~ time
+       , Time (Out renderCl) ~ time
+       , GetClockProxy eventCl
        , GetClockProxy simCl
-       , Clock m renderCl
        , GetClockProxy renderCl
-       , Time renderCl ~ UTCTime
+       , Clock m eventCl
+       , Clock m (In eventCl)
+       , Clock m (Out eventCl)
+       , Clock m simCl
+       , Clock m (In simCl)
+       , Clock m (Out simCl)
+       , Clock m renderCl
+       , Clock m (In renderCl)
+       , Clock m (Out renderCl)
        )
     => state
     -> renderState
-    -> ClSFExcept m EventClock state state a
-    -> simCl
-    -> ClSF m simCl state state
-    -> renderCl
-    -> ClSF m renderCl (state, renderState) renderState
-    -> m a
-flowSDL initialState renderState handleEvent simClock simulate renderClock render =
+    -> Rhine (ExceptT e m) eventCl state state
+    -> Rhine m simCl state state
+    -> Rhine m renderCl (state, renderState) renderState
+    -> m e
+flowSDL initialState renderState eventRh simRh renderRh =
     flowExcept $
         feedbackRhine
             (keepLast initialState)
-            ( feedbackify (runClSFExcept handleEvent @@ EventClock)
-                |@| feedbackify (liftClSFAndClock simulate @@ liftClock simClock)
-            )
+            (feedbackify eventRh |@| feedbackify simRh)
             >-- keepLast initialState
             --> feedbackRhine
                 (keepLast renderState)
-                (liftClSFAndClock (render >>^ ((),)) @@ liftClock renderClock)
+                (renderRh @>>^ ((),))
 
 feedbackify :: (Monad m) => Rhine m cl a a -> Rhine m cl ((), a) (a, a)
 feedbackify rh = snd ^>>@ rh @>>^ (\st -> (st, st))

@@ -21,8 +21,9 @@ main = do
     let bombDensity = 0.2 :: Float
     let tileSize = 64 :: Integer
     sprite <- Sprite.spriteTexture renderer
-    let simClock = waitClock @10
-    let renderClock = waitClock @16
+    let eventRh = handleEventS @@ EventClock
+    let simRh = simulateS @@ waitClock @10
+    let renderRh = renderFrameS @@ waitClock @16
     flowSDL
         AppState
             { seed
@@ -35,9 +36,7 @@ main = do
             , tileOpenQueue = mempty
             }
         RenderState{..}
-        handleEventS
-        simClock
-        simulateS
-        renderClock
-        renderFrameS
+        eventRh
+        simRh
+        renderRh
         >>= exitWith
