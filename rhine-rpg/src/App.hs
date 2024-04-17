@@ -2,12 +2,23 @@ module App where
 
 import Prelude
 
+data Floor = Floor
+    { gapBefore :: Int
+    , x :: Int
+    , width :: Int
+    , y :: Int
+    }
+
+newtype Level = Level
+    { floors :: Seq Floor
+    }
+
 data AppState = AppState
     { seed :: Int
-    , tileSize :: Integer
+    , tileSize :: Int
     , offset :: Pos
     , cursor :: Maybe Pos
-    , gameMap :: [[Tile]]
+    , level :: Level
     }
     deriving stock (Generic)
 

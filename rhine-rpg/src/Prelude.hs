@@ -6,6 +6,7 @@ module Prelude
     , module Data.Ord
     , module Data.Sequence
     , module Data.Set
+    , module Data.Map
     , module Debug.Trace
     , module FRP.Rhine
     , module Foreign.C
@@ -13,10 +14,11 @@ module Prelude
     )
 where
 
-import Control.Lens.Combinators
+import Control.Lens.Combinators hiding (Level)
 import Control.Lens.Operators
 import Control.Monad.State.Strict (StateT, runStateT)
 import Data.Generics.Labels ()
+import Data.Map (Map)
 import Data.Ord (clamp)
 import Data.Sequence (Seq, ViewL (..))
 import Data.Set (Set)
@@ -28,13 +30,13 @@ import SDL qualified
 import SDL.Primitive qualified as SDL
 import "base" Prelude
 
-data Pos = Pos {x :: Integer, y :: Integer} deriving stock (Eq, Ord, Show)
+data Pos = Pos {x :: Int, y :: Int} deriving stock (Eq, Ord, Show)
 
-offsetPos :: (Integer -> Integer) -> (Integer -> Integer) -> Pos -> Pos
+offsetPos :: (Int -> Int) -> (Int -> Int) -> Pos -> Pos
 offsetPos fx fy Pos{..} = Pos{x = fx x, y = fy y}
 
-adjacentTiles :: Pos -> [Pos]
-adjacentTiles pos =
+neighbors :: Pos -> [Pos]
+neighbors pos =
     [ Pos{x, y}
     | x <- [pos.x - 1 .. pos.x + 1]
     , y <- [pos.y - 1 .. pos.y + 1]
@@ -49,6 +51,3 @@ fromPos f Pos{..} = f (fromIntegral x) (fromIntegral y)
 
 toPos :: (Integral a) => a -> a -> Pos
 toPos x y = Pos (fromIntegral x) (fromIntegral y)
-
-data Tile = Wall | Door | Air
-    deriving stock (Eq, Ord, Show)

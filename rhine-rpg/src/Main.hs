@@ -3,7 +3,7 @@ module Main where
 import App
 import Event
 import FRP.Rhine.SDL (flowSDL)
-import ModelSynthesis qualified
+import ModelSynthesis
 import Render
 import SDL qualified
 import Simulate (simulateS)
@@ -21,15 +21,25 @@ main = do
     -- sprite <- Sprite.spriteTexture renderer
     let simClock = waitClock @10
     let renderClock = waitClock @16
-    let tileSize :: Integer = 10
-    let gameMap = ModelSynthesis.generate (100, 100)
+    let tileSize :: Int = 8
+    let gen =
+            GenParams
+                { seed = 42
+                , maxSpeed = 6
+                , maxJumpSpeed = 3
+                , gravity = 9.81
+                , maximalDrop = 3
+                , minGapWidth = 2
+                , maxGapWidth = 5
+                }
+    let level = ModelSynthesis.generate gen 10
     flowSDL
         AppState
             { seed
             , tileSize
-            , offset = Pos{x = tileSize `div` 2, y = tileSize `div` 2}
             , cursor = Nothing
-            , gameMap
+            , offset = Pos 20 20
+            , level
             }
         RenderState{..}
         handleEventS

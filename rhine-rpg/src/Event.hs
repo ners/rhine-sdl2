@@ -8,7 +8,7 @@ import Prelude hiding (EventClock)
 data Event
     = Exit
     | ChangeOffset (Pos -> Pos)
-    | Zoom Pos (Integer -> Integer)
+    | Zoom Pos (Int -> Int)
     | Hover (Maybe Pos)
 
 fromSdlEvent :: AppState -> SDL.Event -> Maybe Event
