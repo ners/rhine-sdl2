@@ -4,7 +4,7 @@
 module FRP.Rhine.SDL where
 
 import Control.Monad.Schedule.Class (MonadSchedule)
-import Data.Automaton.MSF.Trans.Except (reactimateExcept, try)
+import Data.Automaton.Trans.Except (reactimateExcept, try)
 import Data.Time (addUTCTime, getCurrentTime, secondsToNominalDiffTime)
 import FRP.Rhine hiding (EventClock, try)
 import SDL qualified
@@ -20,7 +20,7 @@ instance (MonadIO m) => Clock m EventClock where
     initClock EventClock = do
         initialSdlTime <- SDL.Raw.getTicks
         initialTime <- liftIO getCurrentTime
-        let clock :: MSF m () (Time EventClock, Tag EventClock)
+        let clock :: Automaton m () (Time EventClock, Tag EventClock)
             clock = constM SDL.waitEvent >>^ (\e -> (eventTimestamp e, e))
             eventTimestamp :: SDL.Event -> UTCTime
             eventTimestamp e =
@@ -45,12 +45,12 @@ flowSDL
        )
     => state
     -> renderState
-    -> ClSFExcept m EventClock state state a
+    -> ClSFExcept EventClock state state m e
     -> simCl
     -> ClSF m simCl state state
     -> renderCl
     -> ClSF m renderCl (state, renderState) renderState
-    -> m a
+    -> m e
 flowSDL initialState renderState handleEvent simClock simulate renderClock render =
     flowExcept $
         feedbackRhine

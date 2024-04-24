@@ -1,8 +1,8 @@
 cabal-version:       3.0
-name:                rhine-sdl2
+name:                rhine-kobl
 version:             0.1.0.0
-synopsis:            SDL2 frontend for Rhine
-homepage:            https://github.com/ners/rhine-sdl2/blob/master/README.md
+synopsis:            Kobold adventure powered by Rhine
+homepage:            https://github.com/ners/rhine-sdl2/blob/master/rhine-kobl/README.md
 license:             Apache-2.0
 license-file:        LICENCE.md
 author:              ners
@@ -52,26 +52,36 @@ common common
     build-depends:
         base >= 4 && < 5,
 
-library
+executable kobl
     import:           common
     hs-source-dirs:   src
-    exposed-modules:
-        FRP.Rhine.SDL,
+    main-is:          Main.hs
+    other-modules:
+        App
+        Dev
+        Event
+        Font
+        Prelude
+        Render
+        Simulate
+        Sprite
+        Text
+        Widget
+    ghc-options:      -O2 -threaded
     build-depends:
-        automaton,
-        monad-schedule,
-        rhine >= 1.2 && < 2,
-        sdl2 >= 2.5 && < 3,
-        time,
-
-executable example
-    import:           common
-    main-is:          Example.hs
-    ghc-options:      -main-is Example -O2 -threaded
-    build-depends:
+        bytestring,
+        containers,
+        file-embed,
+        generic-lens,
+        lens,
+        lrucaching,
+        mtl,
         random,
         rhine,
         rhine-sdl2,
         sdl2,
-        sdl2-gfx,
+        sdl2-image,
+        sdl2-ttf,
+        stm,
+        text,
         vector,
