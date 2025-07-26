@@ -4,13 +4,7 @@
     extra-trusted-public-keys = "haskell:WskuxROW5pPy83rt3ZXnff09gvnu80yovdeKDw5Gi3o=";
   };
 
-  inputs = {
-    nixpkgs.url = "github:nixos/nixpkgs/nixos-unstable";
-    rhine = {
-      url = "github:turion/rhine/dev_automata";
-      flake = false;
-    };
-  };
+  inputs.nixpkgs.url = "github:nixos/nixpkgs/nixos-unstable";
 
   outputs = inputs:
     with builtins;
@@ -44,19 +38,27 @@
           (pname: path: hfinal.callCabal2nix pname path { })
           (cabalProjectPackages root);
       pnames = cabalProjectPnames ./.;
-      ghcs = [ "ghc92" "ghc94" ];
-      hpsFor = pkgs:
-        lib.filterAttrs (ghc: _: elem ghc ghcs) pkgs.haskell.packages
-        // { default = pkgs.haskellPackages; };
+      ghcsFor = pkgs: with lib; foldlAttrs
+        (acc: name: hp:
+          let
+            version = getVersion hp.ghc;
+            majorMinor = versions.majorMinor version;
+            ghcName = "ghc${replaceStrings ["."] [""] majorMinor}";
+          in
+          if hp ? ghc && ! acc ? ${ghcName} && versionAtLeast version "9.2" && versionOlder version "9.11"
+          then acc // { ${ghcName} = hp; }
+          else acc
+        )
+        { }
+        pkgs.haskell.packages;
+      hpsFor = pkgs: { default = pkgs.haskellPackages; } // ghcsFor pkgs;
       overlay = lib.composeManyExtensions [
         (final: prev: {
           haskell = prev.haskell // {
             packageOverrides = lib.composeManyExtensions [
               prev.haskell.packageOverrides
               (cabalProjectOverlay ./.)
-              (cabalProjectOverlay inputs.rhine)
               (hfinal: hprev: with prev.haskell.lib.compose; {
-                rhine = doJailbreak (dontCheck hprev.rhine);
                 rhine-sdl2 = hprev.rhine-sdl2.overrideAttrs (attrs: {
                   meta.mainProgram = "example";
                 });

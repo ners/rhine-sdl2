@@ -55,7 +55,7 @@ handleEvent ev st =
 
 handleEventS
     :: (MonadIO m, Tag cl ~ SDL.Event)
-    => ClSFExcept m cl AppState AppState ExitCode
+    => ClSFExcept cl AppState AppState m ExitCode
 handleEventS = try $ tagS &&& returnA >>> arrMCl (uncurry handleEvent)
 
 simulateS
