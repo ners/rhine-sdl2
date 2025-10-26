@@ -26,7 +26,7 @@ moveOffset
     :: (Pos -> Pos)
     -> AppState
     -> AppState
-moveOffset offsetPos st = clearCursor $ st{offset = offsetPos st.offset}
+moveOffset offsetPos' st = clearCursor $ st{offset = offsetPos' st.offset}
 
 firstClickSeedReroll :: AppState -> Pos -> Int
 firstClickSeedReroll st pos

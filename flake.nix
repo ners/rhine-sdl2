@@ -15,86 +15,109 @@
         else if isAttrs xs then mapAttrsToList f xs
         else throw "foreach: expected list or attrset but got ${typeOf xs}"
       );
-      readDirs = root: attrNames (lib.filterAttrs (_: type: type == "directory") (readDir root));
-      readFiles = root: attrNames (lib.filterAttrs (_: type: type == "regular") (readDir root));
-      basename = path: suffix: with lib; pipe path [
-        (splitString "/")
-        last
-        (removeSuffix suffix)
-      ];
-      cabalProjectPackages = root: with lib; foreach (readDirs root) (dir:
-        let
-          path = "${root}/${dir}";
-          files = readFiles path;
-          cabalFiles = filter (strings.hasSuffix ".cabal") files;
-          pnames = map (path: basename path ".cabal") cabalFiles;
-          pname = if pnames == [ ] then null else head pnames;
-        in
-        optionalAttrs (pname != null) { ${pname} = path; }
-      );
-      cabalProjectPnames = root: lib.attrNames (cabalProjectPackages root);
-      cabalProjectOverlay = root: hfinal: hprev: with lib;
-        mapAttrs
-          (pname: path: hfinal.callCabal2nix pname path { })
-          (cabalProjectPackages root);
-      pnames = cabalProjectPnames ./.;
+      sourceFilter = root: with lib.fileset; toSource {
+        inherit root;
+        fileset = fileFilter
+          (file: any file.hasExt [ "cabal" "hs" "md" "png" ])
+          root;
+      };
       ghcsFor = pkgs: with lib; foldlAttrs
-        (acc: name: hp:
+        (acc: name: hp':
           let
-            version = getVersion hp.ghc;
+            hp = tryEval hp';
+            version = getVersion hp.value.ghc;
             majorMinor = versions.majorMinor version;
             ghcName = "ghc${replaceStrings ["."] [""] majorMinor}";
           in
-          if hp ? ghc && ! acc ? ${ghcName} && versionAtLeast version "9.2" && versionOlder version "9.11"
-          then acc // { ${ghcName} = hp; }
+          if hp.value ? ghc && ! acc ? ${ghcName} && versionAtLeast version "9.8" && versionOlder version "9.12"
+          then acc // { ${ghcName} = hp.value; }
           else acc
         )
         { }
         pkgs.haskell.packages;
       hpsFor = pkgs: { default = pkgs.haskellPackages; } // ghcsFor pkgs;
+      pnames = map (path: baseNameOf (dirOf path)) (lib.fileset.toList (lib.fileset.fileFilter (file: file.hasExt "cabal") ./.));
+      libPnames = filter (pname: pname != "rhine-mine") pnames;
+      haskell-overlay = final: prev: lib.composeManyExtensions [
+        (hfinal: hprev: lib.genAttrs pnames (pname: hfinal.callCabal2nix pname (sourceFilter ./${pname}) { }))
+        (hfinal: hprev: with prev.haskell.lib.compose; {
+          lrucaching = doJailbreak (unmarkBroken hprev.lrucaching);
+          rhine-sdl2 = hprev.rhine-sdl2.overrideAttrs (attrs: {
+            meta.mainProgram = "example";
+          });
+          sdl2-image = lib.pipe hprev.sdl2-image [
+            unmarkBroken
+            (drv: drv.overrideAttrs (attrs: {
+              strictDeps = true;
+            }))
+          ];
+        })
+      ];
       overlay = lib.composeManyExtensions [
         (final: prev: {
           haskell = prev.haskell // {
             packageOverrides = lib.composeManyExtensions [
               prev.haskell.packageOverrides
-              (cabalProjectOverlay ./.)
-              (hfinal: hprev: with prev.haskell.lib.compose; {
-                rhine-sdl2 = hprev.rhine-sdl2.overrideAttrs (attrs: {
-                  meta.mainProgram = "example";
-                });
-                sdl2-image = lib.pipe hprev.sdl2-image [
-                  markUnbroken
-                  (drv: drv.overrideAttrs (attrs: {
-                    strictDeps = true;
-                  }))
-                ];
-              })
+              (haskell-overlay final prev)
             ];
           };
-        })
-        (final: prev: lib.optionalAttrs (prev.stdenv.hostPlatform.isWindows) {
         })
       ];
     in
     {
-      overlays.default = overlay;
+      overlays = {
+        default = overlay;
+        haskell = haskell-overlay;
+      };
     }
     //
     foreach inputs.nixpkgs.legacyPackages
       (system: pkgs':
-        let pkgs = pkgs'.extend overlay; in
+        let
+          pkgs = pkgs'.extend overlay;
+          hps = hpsFor pkgs;
+          pname = "rhine-sdl2";
+          bins = pkgs.buildEnv {
+            name = "${pname}-bins";
+            paths = map (pname: hps.default.${pname}) pnames;
+            pathsToLink = [ "/bin" ];
+          };
+          libs = pkgs.buildEnv {
+            name = "${pname}-libs";
+            paths =
+              lib.mapCartesianProduct
+                ({ hp, pname }: hp.${pname})
+                { hp = attrValues hps; pname = libPnames; };
+            pathsToLink = [ "/lib" ];
+          };
+          docs = pkgs.buildEnv {
+            name = "${pname}-docs";
+            paths = map (pname: pkgs.haskell.lib.documentationTarball hps.default.${pname}) libPnames;
+          };
+          sdist = pkgs.buildEnv {
+            name = "${pname}-sdist";
+            paths = map (pname: pkgs.haskell.lib.sdistTarball hps.default.${pname}) libPnames;
+          };
+          docsAndSdist = pkgs.linkFarm "${pname}-docsAndSdist" { inherit docs sdist; };
+        in
         {
           formatter.${system} = pkgs.nixpkgs-fmt;
           legacyPackages.${system} = pkgs;
-          packages.${system}.default = (hpsFor pkgs).default.rhine-mine;
+          packages.${system}.default = pkgs.symlinkJoin {
+            name = "${pname}-all";
+            paths = [ bins libs docsAndSdist ];
+            inherit (hps.default.rhine-sdl2) meta;
+          };
           devShells.${system} =
-            foreach (hpsFor pkgs) (ghcName: hp: {
+            foreach hps (ghcName: hp: {
               ${ghcName} = hp.shellFor {
                 packages = ps: map (pname: ps.${pname}) pnames;
-                nativeBuildInputs = with hp; [
-                  pkgs'.haskellPackages.cabal-install
-                  pkgs'.haskellPackages.fourmolu
-                  haskell-language-server
+                nativeBuildInputs = with pkgs'; with haskellPackages; [
+                  cabal-install
+                  cabal-gild
+                  fourmolu
+                ] ++ lib.optionals (lib.versionAtLeast (lib.getVersion hp.ghc) "9.4") [
+                  hp.haskell-language-server
                 ];
               };
             });
